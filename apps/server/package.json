@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --clear-screen=false --ignore \"**/node_modules/**\" --ignore \"**/.vite-temp/**\" src/index.ts",
+    "dev": "cross-env NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx watch --clear-screen=false --ignore \"**/node_modules/**\" --ignore \"**/.vite-temp/**\" src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "cross-env NODE_ENV=production node dist/index.js"
+    "start": "cross-env NODE_ENV=production NODE_OPTIONS=--disable-warning=ExperimentalWarning node dist/index.js"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",

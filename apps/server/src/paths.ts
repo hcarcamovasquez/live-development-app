@@ -9,12 +9,13 @@ const here = dirname(fileURLToPath(import.meta.url))
 export const webRoot = resolve(here, '../../web')
 export const webDist = resolve(webRoot, 'dist')
 
-// El PROYECTO editable: una app Vite COMPLETA e INDEPENDIENTE del editor, en un
-// storage EXTERNO al repo (sus propios archivos, su propio node_modules, su
-// propio dev server). Configurable con STORAGE_DIR.
-export const projectDir =
-  process.env.STORAGE_DIR ?? join(homedir(), '.live-development-app', 'project')
+// Directorio donde se PERSISTEN los proyectos (cada subcarpeta es un proyecto
+// Vite independiente con su propio node_modules y dev server). Configurable.
+export const projectsDir =
+  process.env.PROJECTS_DIR ?? join(homedir(), '.live-development-app', 'projects')
 
-// Puerto del dev server propio del proyecto (independiente del editor).
-export const previewPort = Number(process.env.PREVIEW_PORT ?? 5174)
-export const previewUrl = `http://localhost:${previewPort}`
+// Puerto base para los dev servers de los proyectos (se asigna uno libre por
+// proyecto a partir de aquí).
+export const previewPortBase = Number(
+  process.env.PREVIEW_PORT_BASE ?? process.env.PREVIEW_PORT ?? 5174,
+)

@@ -2,30 +2,26 @@ import { Hono } from 'hono'
 import { getRequestListener, serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { createServer as createHttpServer } from 'node:http'
-import { readFile } from 'node:fs/promises'
+import { readFile, mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { api } from './api.js'
-import { webRoot, webDist, previewUrl } from './paths.js'
-import { ensureScaffold, ensureInstalled, startDevServer } from './project.js'
+import { webRoot, webDist, projectsDir } from './paths.js'
+import { stopAll } from './projects.js'
 
 const PORT = Number(process.env.PORT ?? 3000)
 const isProd = process.env.NODE_ENV === 'production'
 
-// 1) Garantiza el PROYECTO independiente y arranca SU dev server propio.
-await ensureScaffold()
-await ensureInstalled()
-const projectChild = await startDevServer()
-console.log(`  🧪 Proyecto (independiente) en ${previewUrl}`)
+// Asegura el directorio donde se persisten los proyectos.
+await mkdir(projectsDir, { recursive: true })
 
-// Si el editor termina, baja también el dev server del proyecto.
+// Al cerrar el editor, baja los dev servers de los proyectos.
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, () => {
-    projectChild.kill()
+    stopAll()
     process.exit(0)
   })
 }
 
-// 2) Sirve el EDITOR.
 if (isProd) {
   await startProd()
 } else {
@@ -34,7 +30,7 @@ if (isProd) {
 
 /**
  * DEV: el editor (apps/web) se sirve con Hono + Vite middleware (HMR del editor).
- * El preview del proyecto va por iframe a SU propio dev server.
+ * Cada proyecto corre su propio dev server (bajo demanda) y se muestra por iframe.
  */
 async function startDev() {
   const { createServer: createViteServer } = await import('vite')
@@ -44,8 +40,8 @@ async function startDev() {
 
   const vite = await createViteServer({
     root: webRoot,
-    // configFile:false evita que Vite bundlee apps/web/vite.config.ts a un
-    // archivo temporal (.vite-temp), que disparaba reinicios de tsx watch.
+    // configFile:false evita que Vite bundlee la config a .vite-temp (lo que
+    // disparaba reinicios de tsx watch).
     configFile: false,
     plugins: [react()],
     appType: 'custom',
@@ -77,8 +73,8 @@ async function startDev() {
 
   httpServer.listen(PORT, () => {
     console.log(`\n  ⚡ live-development-app  [dev]`)
-    console.log(`  → Editor:   http://localhost:${PORT}`)
-    console.log(`  → Proyecto: ${previewUrl} (iframe)\n`)
+    console.log(`  → Editor: http://localhost:${PORT}`)
+    console.log(`  Proyectos en: ${projectsDir}\n`)
   })
 }
 
@@ -94,8 +90,7 @@ async function startProd() {
   })
   serve({ fetch: app.fetch, port: PORT }, () => {
     console.log(`\n  ⚡ live-development-app  [prod]`)
-    console.log(`  → Editor:   http://localhost:${PORT}`)
-    console.log(`  → Proyecto: ${previewUrl} (iframe)\n`)
+    console.log(`  → Editor: http://localhost:${PORT}\n`)
   })
 }
 

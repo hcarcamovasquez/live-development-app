@@ -1,100 +1,109 @@
 # live-development-app
 
-PoC de un **entorno de desarrollo local** estilo StackBlitz/bolt: editas el código
-de una app desde el navegador (editor Monaco) y ves el **hot reload en vivo**.
+PoC de un **entorno de desarrollo local** estilo StackBlitz/bolt: una consola que
+**lista y crea proyectos**, y un editor (Monaco) donde editas el código y ves el
+**hot reload en vivo**.
 
-La app editable es un **proyecto Vite COMPLETO e INDEPENDIENTE del editor**: vive
-en un storage **externo al repo**, con sus propios archivos, su propio
-`node_modules` y su **propio dev server**. El editor solo la muestra en un
-**iframe** y le escribe los archivos vía API. Su build/HMR es totalmente
-independiente.
+Cada proyecto es una app Vite **completa e independiente** (sus archivos, su propio
+`node_modules` y su **propio dev server**), persistida en un directorio configurable
+fuera del repo. El editor solo la muestra en un **iframe** y le escribe archivos vía
+API. El registro de proyectos se guarda en **SQLite** del lado del servidor.
 
 ## Arquitectura
 
 ```
-┌─────────────────────────────┐         ┌──────────────────────────────┐
-│  EDITOR  (apps/web)          │         │  PROYECTO INDEPENDIENTE       │
-│  Hono + Vite middleware      │         │  (storage externo al repo)    │
-│  http://localhost:3000       │         │  ~/.live-development-app/...   │
-│                              │         │  package.json · node_modules  │
-│  ┌────────────┬───────────┐  │ iframe  │  vite.config.js · index.html  │
-│  │  Monaco    │  <iframe>──┼──┼────────▶│  src/UserApp.tsx              │
-│  │  editor    │  preview   │  │         │                               │
-│  └────────────┴───────────┘  │         │  dev server PROPIO            │
-│         │ POST /api/file      │         │  http://localhost:5174        │
-└─────────┼───────────────────┘         └───────────────┬──────────────┘
-          │ el server (Hono) escribe el archivo          │ Vite del proyecto
-          └─────────────────────────────────────────────▶ detecta el cambio
-                                                          └▶ HMR → el iframe
-                                                             se actualiza solo
+┌──────────────────────────────┐        ┌──────────────────────────────┐
+│  EDITOR  (apps/web)           │        │  PROYECTOS (storage externo)  │
+│  Hono + Vite middleware :3000 │        │  $PROJECTS_DIR/<slug>/        │
+│                               │        │   package.json · node_modules │
+│  · Consola: listar / crear ───┼──┐     │   vite.config.js · index.html │
+│  · Editor: Monaco | <iframe>──┼──┼────▶│   src/UserApp.tsx             │
+└──────────┬────────────────────┘  │     │   dev server propio :517x     │
+           │ POST /api/file         │open └───────────────┬──────────────┘
+           ▼                        │                     │ Vite del proyecto
+   Hono escribe el archivo ─────────┘                     ▼ detecta → HMR → iframe
+   SQLite registra el proyecto (db.ts)
 ```
 
-1. Editas en Monaco → ⌘/Ctrl+S → `POST /api/file`.
-2. El servidor (Hono) escribe el archivo en el **proyecto externo**.
-3. El **dev server propio del proyecto** (Vite, :5174) detecta el cambio.
-4. HMR actualiza el **iframe** sin recargar el editor.
+- **Listar/crear**: la consola lee/escribe el registro en **SQLite** (`node:sqlite`,
+  integrado, sin dependencias nativas). Crear un proyecto hace scaffold en disco +
+  `pnpm install` (su propio `node_modules`) + alta en SQLite.
+- **Abrir**: arranca (bajo demanda) el dev server propio del proyecto en un puerto
+  libre y devuelve su URL; el editor lo embebe en un iframe.
+- **Editar**: guardar → `POST /api/file` → el servidor escribe el archivo → el Vite
+  **del proyecto** hace HMR → el iframe se actualiza sin recargar el editor.
 
-El servidor, al arrancar, hace **scaffold** del proyecto (si no existe), instala su
-**node_modules** propio y levanta su **dev server**.
+> SQLite va en el **servidor** (no en el navegador) porque es quien posee el
+> filesystem y los dev servers; el navegador no podría ver esas carpetas ni puertos.
 
 ## Estructura (monorepo pnpm)
 
 ```
-live-development-app/            # el EDITOR (monorepo)
-├── pnpm-workspace.yaml
-├── package.json                 # scripts raíz (dev / build / start)
-└── apps/
-    ├── web/                     # editor: React 19 + Vite + Monaco
-    │   └── src/
-    │       ├── App.tsx               # layout IDE (editor | iframe)
-    │       └── components/           # Editor (Monaco) + Preview (iframe)
-    └── server/                  # Hono + @hono/node-server
-        └── src/
-            ├── index.ts             # arranca el proyecto + sirve el editor
-            ├── project.ts           # scaffold + install + dev server del proyecto
-            ├── api.ts               # /api/file sobre el proyecto externo
-            └── paths.ts             # rutas + puerto del preview
-
-~/.live-development-app/project/  # el PROYECTO INDEPENDIENTE (storage externo)
-├── package.json                  # sus propias deps
-├── node_modules/                 # su propio node_modules
-├── vite.config.js                # su propio dev server (:5174)
-├── index.html
-└── src/{main.tsx, UserApp.tsx}    # 👈 lo que editas en vivo
+apps/
+├── web/                      # EDITOR: React 19 + Vite + Monaco
+│   ├── index.html            # fuentes: Bricolage Grotesque + JetBrains Mono
+│   └── src/
+│       ├── App.tsx               # router: listado ↔ editor (?p=<slug>)
+│       └── components/
+│           ├── ProjectList.tsx   # consola: grid de proyectos + modal "crear"
+│           ├── EditorView.tsx     # editor de un proyecto (Monaco | iframe)
+│           ├── Editor.tsx         # wrapper de Monaco
+│           └── Preview.tsx        # iframe al dev server del proyecto
+└── server/                   # Hono + @hono/node-server
+    └── src/
+        ├── index.ts          # sirve el editor (dev/prod)
+        ├── projects.ts       # scaffold + install + dev servers por proyecto
+        ├── db.ts             # SQLite: registro de proyectos
+        ├── api.ts            # /api/projects, /api/file, …
+        └── paths.ts          # rutas + puertos
 ```
 
 ## Uso
 
 ```bash
 pnpm install
-pnpm dev      # editor en :3000; el proyecto se siembra/instala y corre en :5174
+pnpm dev      # editor en :3000
 ```
 
-La **primera** ejecución hace scaffold del proyecto y un `pnpm install` dentro del
-storage externo (crea su `node_modules`); las siguientes arrancan al instante.
+Abre http://localhost:3000, crea un proyecto (nombre → se siembra e instala), ábrelo
+y edita `src/UserApp.tsx`: el preview se actualiza en caliente.
 
-Variables: `PORT` (editor, 3000), `PREVIEW_PORT` (proyecto, 5174),
-`STORAGE_DIR` (ruta del proyecto externo).
+## Variables de entorno
 
-## API (sobre el proyecto externo)
+| Variable            | Por defecto                                  | Descripción                        |
+| ------------------- | -------------------------------------------- | ---------------------------------- |
+| `PORT`              | `3000`                                       | Puerto del editor                  |
+| `PROJECTS_DIR`      | `~/.live-development-app/projects`           | Dónde se persisten los proyectos   |
+| `PREVIEW_PORT_BASE` | `5174`                                       | Puerto base de los dev servers     |
+| `DB_PATH`           | `$PROJECTS_DIR/registry.db`                  | Ruta de la base SQLite             |
 
-| Método | Ruta                  | Descripción                                  |
-| ------ | --------------------- | -------------------------------------------- |
-| GET    | `/api/project`        | URL del dev server del proyecto + ruta       |
-| GET    | `/api/files`          | Lista `src/` del proyecto                    |
-| GET    | `/api/file?path=...`  | Lee un archivo del proyecto                  |
-| POST   | `/api/file`           | Escribe `{ path, content }` → dispara HMR    |
-| GET    | `/api/health`         | Estado                                       |
+## API
 
-Las rutas se resuelven **dentro** del proyecto; se rechaza el path traversal (`../`).
+| Método | Ruta                          | Descripción                              |
+| ------ | ----------------------------- | ---------------------------------------- |
+| GET    | `/api/projects`               | Lista proyectos (desde SQLite) + estado  |
+| POST   | `/api/projects`               | Crea `{ name }` → scaffold + install     |
+| POST   | `/api/projects/:slug/open`    | Arranca el dev server → devuelve `url`   |
+| GET    | `/api/files?project=`         | Lista `src/` del proyecto                |
+| GET    | `/api/file?project=&path=`    | Lee un archivo                           |
+| POST   | `/api/file`                   | Escribe `{ project, path, content }`     |
+
+Las rutas de archivo se resuelven **dentro** del proyecto; se rechaza el path
+traversal (`../`).
+
+## Diseño
+
+Estética *engineering console*: near-black con rejilla blueprint, acento chartreuse
+que señala "vivo/corriendo", tipografías **Bricolage Grotesque** (display) +
+**JetBrains Mono** (UI), revelado escalonado de tarjetas y estados con punto
+pulsante. Construido con la skill de diseño de frontend.
 
 ## Notas técnicas
 
-- **Independencia total**: el proyecto tiene su propio `package.json`,
-  `node_modules`, `vite.config.js` y dev server. El editor nunca lo importa ni lo
-  bundlea; solo lo embebe por iframe y le escribe archivos.
-- **Editor**: servido por Hono + Vite en *middleware mode* (`configFile: false` +
-  plugin React inline para evitar que el bundling de la config dispare reinicios
-  de `tsx watch`).
-- El servidor libera el `PREVIEW_PORT` antes de arrancar el proyecto y baja el
-  proceso hijo al recibir SIGINT/SIGTERM.
+- Cada proyecto es independiente (su `package.json`, `node_modules`, `vite.config.js`
+  y dev server). El editor nunca lo importa ni lo bundlea.
+- El editor usa Vite en *middleware mode* con `configFile: false` + plugin React
+  inline (evita que el bundling de la config dispare reinicios de `tsx watch`).
+- Los dev servers se fijan a IPv4 (`--host 127.0.0.1`) para que el chequeo de puerto
+  libre sea consistente; los opens concurrentes se deduplican; al cerrar el editor se
+  bajan todos los hijos.
