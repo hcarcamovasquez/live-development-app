@@ -1,0 +1,101 @@
+* {
+  box-sizing: border-box;
+}
+
+.ide {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #1e1e1e;
+  color: #ddd;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: #181818;
+  border-bottom: 1px solid #2d2d2d;
+  font-size: 13px;
+}
+
+.brand {
+  font-weight: 600;
+}
+
+.file {
+  color: #8a8a8a;
+  font-family: ui-monospace, monospace;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.status {
+  font-size: 12px;
+  color: #8a8a8a;
+}
+.status-saved {
+  color: #4ec9b0;
+}
+.status-error {
+  color: #ff6b6b;
+}
+.status-saving {
+  color: #dcdcaa;
+}
+
+.save-btn {
+  background: #646cff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.save-btn:hover {
+  background: #535bf2;
+}
+
+.panes {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 0;
+}
+
+.pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-pane {
+  border-right: 1px solid #2d2d2d;
+}
+
+.preview-pane {
+  background: #fff;
+}
+
+.preview-label {
+  padding: 6px 14px;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #8a8a8a;
+  background: #181818;
+  border-bottom: 1px solid #2d2d2d;
+}
+
+.preview-frame {
+  flex: 1;
+  overflow: auto;
+  background: #fff;
+  color: #111;
+}
