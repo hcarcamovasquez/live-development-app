@@ -40,6 +40,9 @@ API. El registro de proyectos se guarda en **SQLite** del lado del servidor.
   (`node-pty`) ancladas al directorio del proyecto, vía WebSocket + **xterm.js**.
   Permite recorrer el filesystem y ejecutar comandos (`ls`, `git`, `npm`, …), con
   **varias terminales en pestañas** (`+` para abrir, cada una con su sesión).
+  Las sesiones son **persistentes en el servidor**: el PTY sobrevive a recargas del
+  navegador (un `tail -f` sigue corriendo) y al reconectar se reenvía el scrollback;
+  solo muere al cerrar la pestaña, por inactividad (30 min) o al apagar el editor.
 
 > SQLite va en el **servidor** (no en el navegador) porque es quien posee el
 > filesystem y los dev servers; el navegador no podría ver esas carpetas ni puertos.

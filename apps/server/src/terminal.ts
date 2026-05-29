@@ -1,20 +1,31 @@
 import { createServer, type Server } from 'node:http'
-import { WebSocketServer } from 'ws'
+import { WebSocketServer, WebSocket } from 'ws'
 import * as pty from 'node-pty'
 import { getProjectRow } from './db.js'
 import { projectPath, slug } from './projects.js'
 import { terminalPort } from './paths.js'
 
 /**
- * Servidor de TERMINALES: un WebSocket que, por cada conexión, lanza una PTY
- * real (shell interactiva) anclada al directorio del proyecto. El navegador
- * (xterm.js) envía la entrada y recibe la salida en streaming, igual que la
- * terminal integrada de un IDE.
+ * Servidor de TERMINALES con sesiones PERSISTENTES en el servidor.
  *
- * Corre en su propio puerto para no chocar con el WebSocket de HMR de Vite.
+ * Cada PTY se identifica por `${proyecto}::${id}` y SOBREVIVE a la desconexión
+ * del WebSocket (p. ej. recargar el navegador): al reconectar con el mismo id se
+ * re-engancha la misma shell y se reenvía el buffer de salida (scrollback).
+ *
+ * La PTY solo muere cuando: el cliente la cierra explícitamente (kill), pasa el
+ * tiempo de inactividad sin ningún cliente, o se apaga el editor.
  */
 const SHELL = process.env.SHELL || 'bash'
-const terminals = new Set<pty.IPty>()
+const MAX_BUFFER = 200_000 // ~200 KB de scrollback por sesión
+const IDLE_MS = 30 * 60_000 // 30 min sin cliente -> se recicla
+
+type Session = {
+  term: pty.IPty
+  buffer: string
+  attached: WebSocket | null
+  idle: ReturnType<typeof setTimeout> | null
+}
+const sessions = new Map<string, Session>()
 
 export function startTerminalServer(): Server {
   const server = createServer()
@@ -23,28 +34,53 @@ export function startTerminalServer(): Server {
   wss.on('connection', (ws, req) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const s = slug(url.searchParams.get('project') ?? '')
+    const id = url.searchParams.get('id') || '1'
     if (!s || !getProjectRow(s)) {
       ws.close(1008, 'Proyecto no encontrado')
       return
     }
+    const key = `${s}::${id}`
 
-    const term = pty.spawn(SHELL, [], {
-      name: 'xterm-256color',
-      cols: 80,
-      rows: 24,
-      cwd: projectPath(s),
-      env: { ...process.env, TERM: 'xterm-256color' },
-    })
-    terminals.add(term)
+    // Reutiliza la sesión existente o crea una nueva PTY.
+    let session = sessions.get(key)
+    if (!session) {
+      const term = pty.spawn(SHELL, [], {
+        name: 'xterm-256color',
+        cols: 80,
+        rows: 24,
+        cwd: projectPath(s),
+        env: { ...process.env, TERM: 'xterm-256color' },
+      })
+      const created: Session = { term, buffer: '', attached: null, idle: null }
+      sessions.set(key, created)
+      term.onData((data) => {
+        created.buffer += data
+        if (created.buffer.length > MAX_BUFFER) {
+          created.buffer = created.buffer.slice(-MAX_BUFFER)
+        }
+        if (created.attached?.readyState === WebSocket.OPEN) created.attached.send(data)
+      })
+      term.onExit(() => {
+        if (created.attached?.readyState === WebSocket.OPEN) created.attached.close()
+        sessions.delete(key)
+      })
+      session = created
+    }
 
-    term.onData((data) => {
-      if (ws.readyState === ws.OPEN) ws.send(data)
-    })
-    term.onExit(() => {
-      terminals.delete(term)
-      if (ws.readyState === ws.OPEN) ws.close()
-    })
+    // (Re)engancha este WebSocket a la sesión.
+    if (session.idle) {
+      clearTimeout(session.idle)
+      session.idle = null
+    }
+    if (session.attached && session.attached !== ws && session.attached.readyState === WebSocket.OPEN) {
+      session.attached.close() // un único cliente activo por sesión
+    }
+    session.attached = ws
 
+    // Reenvía el scrollback acumulado para reconstruir el estado visible.
+    if (session.buffer && ws.readyState === WebSocket.OPEN) ws.send(session.buffer)
+
+    const sess = session
     ws.on('message', (raw) => {
       let msg: { type?: string; data?: string; cols?: number; rows?: number }
       try {
@@ -53,19 +89,24 @@ export function startTerminalServer(): Server {
         return
       }
       if (msg.type === 'input' && typeof msg.data === 'string') {
-        term.write(msg.data)
+        sess.term.write(msg.data)
       } else if (msg.type === 'resize' && msg.cols && msg.rows) {
         try {
-          term.resize(msg.cols, msg.rows)
+          sess.term.resize(msg.cols, msg.rows)
         } catch {
           /* noop */
         }
+      } else if (msg.type === 'kill') {
+        sess.term.kill() // onExit limpia el registro
       }
     })
 
     ws.on('close', () => {
-      terminals.delete(term)
-      term.kill()
+      // No mata la PTY: queda viva para reconectar. GC por inactividad.
+      if (sess.attached === ws) {
+        sess.attached = null
+        sess.idle = setTimeout(() => sess.term.kill(), IDLE_MS)
+      }
     })
   })
 
@@ -75,8 +116,8 @@ export function startTerminalServer(): Server {
   return server
 }
 
-/** Mata todas las PTYs (al cerrar el editor). */
+/** Mata todas las PTYs (al apagar el editor). */
 export function stopTerminals(): void {
-  for (const t of terminals) t.kill()
-  terminals.clear()
+  for (const s of sessions.values()) s.term.kill()
+  sessions.clear()
 }

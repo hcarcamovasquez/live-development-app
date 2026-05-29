@@ -4,10 +4,25 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 
 /**
- * Dock de terminales (estilo VS Code/WebStorm): varias sesiones en pestañas,
- * cada una con su propia PTY real en el servidor. Las sesiones inactivas se
- * ocultan (display:none) pero se mantienen vivas para conservar su estado.
+ * Dock de terminales con sesiones PERSISTENTES en el servidor: cada pestaña tiene
+ * un id estable (guardado por proyecto). Al recargar, se reconecta a la misma PTY
+ * y el servidor reenvía el scrollback. Las inactivas se ocultan pero siguen vivas.
  */
+type TermsState = { ids: number[]; active: number; counter: number }
+
+function loadTerms(project: string): TermsState {
+  try {
+    const s = JSON.parse(localStorage.getItem(`ide.terms.${project}`) ?? 'null')
+    if (s && Array.isArray(s.ids) && s.ids.length) return s
+  } catch {
+    /* noop */
+  }
+  return { ids: [1], active: 1, counter: 1 }
+}
+function saveTerms(project: string, s: TermsState) {
+  localStorage.setItem(`ide.terms.${project}`, JSON.stringify(s))
+}
+
 export function TerminalDock({
   project,
   terminalPort,
@@ -17,27 +32,32 @@ export function TerminalDock({
   terminalPort: number
   onClose: () => void
 }) {
-  const [terms, setTerms] = useState<number[]>([1])
-  const [active, setActive] = useState(1)
-  const counter = useRef(1)
+  const [state, setState] = useState<TermsState>(() => loadTerms(project))
+  const { ids: terms, active } = state
+  // Ids cuya PTY debe matarse al desmontar (cierre explícito de pestaña).
+  const killSet = useRef<Set<number>>(new Set())
 
-  const addTerm = () => {
-    counter.current += 1
-    const id = counter.current
-    setTerms((t) => [...t, id])
-    setActive(id)
-  }
+  useEffect(() => saveTerms(project, state), [project, state])
+
+  const setActive = (id: number) => setState((s) => ({ ...s, active: id }))
+
+  const addTerm = () =>
+    setState((s) => {
+      const id = s.counter + 1
+      return { ids: [...s.ids, id], active: id, counter: id }
+    })
 
   const closeTerm = (id: number) => {
-    setTerms((prev) => {
-      const idx = prev.indexOf(id)
-      const next = prev.filter((t) => t !== id)
-      if (next.length === 0) {
+    killSet.current.add(id) // al desmontar, esta sí mata la PTY
+    setState((s) => {
+      const idx = s.ids.indexOf(id)
+      const ids = s.ids.filter((t) => t !== id)
+      if (ids.length === 0) {
         onClose()
-        return prev
+        return s
       }
-      if (id === active) setActive(next[idx - 1] ?? next[0])
-      return next
+      const nextActive = id === s.active ? (ids[idx - 1] ?? ids[0]) : s.active
+      return { ...s, ids, active: nextActive }
     })
   }
 
@@ -71,7 +91,7 @@ export function TerminalDock({
         </div>
         <span className="ws-term-cwd">~/.live-development-app/projects/{project}</span>
         <span className="ws-spacer" />
-        <button className="ws-icon-btn" title="Cerrar panel" onClick={onClose}>
+        <button className="ws-icon-btn" title="Ocultar panel" onClick={onClose}>
           ✕
         </button>
       </div>
@@ -80,9 +100,11 @@ export function TerminalDock({
         {terms.map((id) => (
           <Term
             key={id}
+            id={id}
             project={project}
             terminalPort={terminalPort}
             hidden={id !== active}
+            killSet={killSet.current}
           />
         ))}
       </div>
@@ -90,21 +112,26 @@ export function TerminalDock({
   )
 }
 
-/** Una sesión de terminal (xterm + WebSocket a una PTY). */
+/** Una sesión de terminal (xterm + WebSocket a una PTY persistente). */
 function Term({
+  id,
   project,
   terminalPort,
   hidden,
+  killSet,
 }: {
+  id: number
   project: string
   terminalPort: number
   hidden: boolean
+  killSet: Set<number>
 }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const fitRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     if (!hostRef.current) return
+    let disposed = false
 
     const term = new XTerm({
       fontFamily: "'JetBrains Mono', ui-monospace, monospace",
@@ -133,7 +160,7 @@ function Term({
 
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     const ws = new WebSocket(
-      `${proto}://${location.hostname}:${terminalPort}/?project=${encodeURIComponent(project)}`,
+      `${proto}://${location.hostname}:${terminalPort}/?project=${encodeURIComponent(project)}&id=${id}`,
     )
 
     const sendResize = () => {
@@ -153,7 +180,9 @@ function Term({
       sendResize()
     }
     ws.onmessage = (e) => term.write(typeof e.data === 'string' ? e.data : '')
-    ws.onclose = () => term.write('\r\n\x1b[2m[sesión terminada]\x1b[0m\r\n')
+    ws.onclose = () => {
+      if (!disposed) term.write('\r\n\x1b[2m[sesión terminada]\x1b[0m\r\n')
+    }
 
     const dataSub = term.onData((d) => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -165,15 +194,20 @@ function Term({
     ro.observe(hostRef.current)
 
     return () => {
+      disposed = true
       ro.disconnect()
       dataSub.dispose()
+      // Cierre explícito de la pestaña -> mata la PTY en el servidor.
+      // Desmontaje normal (toggle/navegar) -> solo desconecta; la PTY persiste.
+      if (killSet.has(id) && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'kill' }))
+      }
       ws.close()
       term.dispose()
       fitRef.current = null
     }
-  }, [project, terminalPort])
+  }, [id, project, terminalPort, killSet])
 
-  // Al volverse visible, reajusta el tamaño y enfoca.
   useEffect(() => {
     if (!hidden) fitRef.current?.()
   }, [hidden])
