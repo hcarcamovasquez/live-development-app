@@ -1,9 +1,39 @@
 import { Hono } from 'hono'
-import { readFile, writeFile, readdir } from 'node:fs/promises'
-import { resolve, relative, isAbsolute, join } from 'node:path'
+import { readFile, writeFile, readdir, rm, mkdir } from 'node:fs/promises'
+import { resolve, relative, isAbsolute, join, dirname } from 'node:path'
 import { projectsDir } from './paths.js'
-import { listProjects, createProject, openProject, slug, projectPath } from './projects.js'
+import {
+  listProjects,
+  createProject,
+  openProject,
+  deleteProject,
+  slug,
+  projectPath,
+} from './projects.js'
 import { getProjectRow } from './db.js'
+
+type TreeNode = { name: string; path: string; type: 'file' | 'dir'; children?: TreeNode[] }
+const IGNORE = new Set(['node_modules', 'dist', '.git', '.DS_Store'])
+
+async function buildTree(dir: string, base: string): Promise<TreeNode[]> {
+  const entries = await readdir(dir, { withFileTypes: true })
+  const nodes: TreeNode[] = []
+  for (const e of entries) {
+    if (IGNORE.has(e.name)) continue
+    const abs = join(dir, e.name)
+    const rel = relative(base, abs)
+    if (e.isDirectory()) {
+      nodes.push({ name: e.name, path: rel, type: 'dir', children: await buildTree(abs, base) })
+    } else if (e.isFile()) {
+      nodes.push({ name: e.name, path: rel, type: 'file' })
+    }
+  }
+  // Carpetas primero, luego archivos; alfabético dentro de cada grupo.
+  nodes.sort((a, b) =>
+    a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1,
+  )
+  return nodes
+}
 
 /**
  * API del editor. Gestiona el listado/creación de proyectos y la lectura/escritura
@@ -52,6 +82,28 @@ api.post('/projects/:slug/open', async (c) => {
   }
 })
 
+// Borra un proyecto (dev server + registro + disco).
+api.delete('/projects/:slug', async (c) => {
+  try {
+    await deleteProject(c.req.param('slug'))
+    return c.json({ ok: true })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 400)
+  }
+})
+
+// Árbol de archivos del proyecto (excluye node_modules, dist, .git).
+api.get('/tree', async (c) => {
+  const project = c.req.query('project')
+  if (!project) return c.json({ error: 'falta ?project' }, 400)
+  try {
+    const base = projectRoot(project)
+    return c.json({ tree: await buildTree(base, base) })
+  } catch (err) {
+    return c.json({ error: String(err) }, 400)
+  }
+})
+
 // ── Archivos de un proyecto ───────────────────────────────────────────────────
 api.get('/files', async (c) => {
   const project = c.req.query('project')
@@ -82,8 +134,23 @@ api.post('/file', async (c) => {
     return c.json({ error: 'se requiere { project, path, content }' }, 400)
   }
   try {
-    await writeFile(safeResolve(body.project, body.path), body.content, 'utf8')
+    const abs = safeResolve(body.project, body.path)
+    await mkdir(dirname(abs), { recursive: true }) // permite crear archivos nuevos
+    await writeFile(abs, body.content, 'utf8')
     return c.json({ ok: true, path: body.path, bytes: body.content.length })
+  } catch (err) {
+    return c.json({ error: String(err) }, 400)
+  }
+})
+
+// Borra un archivo del proyecto.
+api.delete('/file', async (c) => {
+  const project = c.req.query('project')
+  const path = c.req.query('path')
+  if (!project || !path) return c.json({ error: 'faltan ?project y ?path' }, 400)
+  try {
+    await rm(safeResolve(project, path), { force: true })
+    return c.json({ ok: true })
   } catch (err) {
     return c.json({ error: String(err) }, 400)
   }

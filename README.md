@@ -30,8 +30,12 @@ API. El registro de proyectos se guarda en **SQLite** del lado del servidor.
   `pnpm install` (su propio `node_modules`) + alta en SQLite.
 - **Abrir**: arranca (bajo demanda) el dev server propio del proyecto en un puerto
   libre y devuelve su URL; el editor lo embebe en un iframe.
-- **Editar**: guardar → `POST /api/file` → el servidor escribe el archivo → el Vite
+- **Editar**: el editor tiene un **explorador de archivos** (árbol del proyecto) para
+  abrir/crear/borrar archivos; cada uno se edita en Monaco con su lenguaje según la
+  extensión. Guardar → `POST /api/file` → el servidor escribe el archivo → el Vite
   **del proyecto** hace HMR → el iframe se actualiza sin recargar el editor.
+- **Gestionar**: cada tarjeta del listado permite **abrir** o **borrar** el proyecto
+  (con confirmación; el borrado elimina dev server + carpeta + registro).
 
 > SQLite va en el **servidor** (no en el navegador) porque es quien posee el
 > filesystem y los dev servers; el navegador no podría ver esas carpetas ni puertos.
@@ -45,10 +49,12 @@ apps/
 │   └── src/
 │       ├── App.tsx               # router: listado ↔ editor (?p=<slug>)
 │       └── components/
-│           ├── ProjectList.tsx   # consola: grid de proyectos + modal "crear"
-│           ├── EditorView.tsx     # editor de un proyecto (Monaco | iframe)
-│           ├── Editor.tsx         # wrapper de Monaco
-│           └── Preview.tsx        # iframe al dev server del proyecto
+│           ├── ProjectList.tsx   # consola: grid de proyectos (abrir/borrar) + modal "crear"
+│           ├── EditorView.tsx     # editor de un proyecto (explorer | Monaco | iframe)
+│           ├── FileExplorer.tsx   # árbol de archivos (abrir/crear/borrar)
+│           ├── Editor.tsx         # wrapper de Monaco (modelo + lenguaje por archivo)
+│           ├── Preview.tsx        # iframe al dev server del proyecto
+│           └── ConfirmModal.tsx   # confirmación reutilizable (borrados)
 └── server/                   # Hono + @hono/node-server
     └── src/
         ├── index.ts          # sirve el editor (dev/prod)
@@ -84,9 +90,11 @@ y edita `src/UserApp.tsx`: el preview se actualiza en caliente.
 | GET    | `/api/projects`               | Lista proyectos (desde SQLite) + estado  |
 | POST   | `/api/projects`               | Crea `{ name }` → scaffold + install     |
 | POST   | `/api/projects/:slug/open`    | Arranca el dev server → devuelve `url`   |
-| GET    | `/api/files?project=`         | Lista `src/` del proyecto                |
+| DELETE | `/api/projects/:slug`         | Borra el proyecto (dev server + disco + SQLite) |
+| GET    | `/api/tree?project=`          | Árbol de archivos (sin node_modules/dist) |
 | GET    | `/api/file?project=&path=`    | Lee un archivo                           |
-| POST   | `/api/file`                   | Escribe `{ project, path, content }`     |
+| POST   | `/api/file`                   | Escribe `{ project, path, content }` (crea si no existe) |
+| DELETE | `/api/file?project=&path=`    | Borra un archivo                         |
 
 Las rutas de archivo se resuelven **dentro** del proyecto; se rechaza el path
 traversal (`../`).

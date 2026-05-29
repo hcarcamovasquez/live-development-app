@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { ConfirmModal } from './ConfirmModal'
 
 type Project = {
   name: string
@@ -12,6 +13,7 @@ export function ProjectList({ onOpen }: { onOpen: (slug: string) => void }) {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
+  const [del, setDel] = useState<Project | null>(null)
 
   const load = () => {
     fetch('/api/projects')
@@ -20,6 +22,13 @@ export function ProjectList({ onOpen }: { onOpen: (slug: string) => void }) {
       .finally(() => setLoading(false))
   }
   useEffect(load, [])
+
+  const remove = async () => {
+    if (!del) return
+    await fetch(`/api/projects/${encodeURIComponent(del.slug)}`, { method: 'DELETE' })
+    setDel(null)
+    load()
+  }
 
   return (
     <div className="console">
@@ -63,14 +72,33 @@ export function ProjectList({ onOpen }: { onOpen: (slug: string) => void }) {
                     <span className="status-dot" />
                     {p.running ? 'running' : 'idle'}
                   </span>
-                  <span className="card-idx">{String(i + 1).padStart(2, '0')}</span>
+                  <button
+                    className="card-trash"
+                    title="Borrar proyecto"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setDel(p)
+                    }}
+                  >
+                    ✕
+                  </button>
                 </div>
                 <h2 className="card-name">{p.name}</h2>
                 <div className="card-foot">
                   <code className="slug">/{p.slug}</code>
                   <span className="created">{fmtDate(p.createdAt)}</span>
                 </div>
-                <span className="card-open">abrir →</span>
+                <div className="card-actions">
+                  <button
+                    className="card-open-btn"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onOpen(p.slug)
+                    }}
+                  >
+                    abrir →
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -81,6 +109,21 @@ export function ProjectList({ onOpen }: { onOpen: (slug: string) => void }) {
         <CreateModal
           onClose={() => setModal(false)}
           onCreated={(slug) => onOpen(slug)}
+        />
+      )}
+
+      {del && (
+        <ConfirmModal
+          title="delete_project"
+          confirmLabel="Borrar proyecto"
+          message={
+            <>
+              ¿Borrar <strong>{del.name}</strong>? Se eliminarán su carpeta,
+              su <code>node_modules</code> y su registro. No se puede deshacer.
+            </>
+          }
+          onConfirm={remove}
+          onClose={() => setDel(null)}
         />
       )}
     </div>

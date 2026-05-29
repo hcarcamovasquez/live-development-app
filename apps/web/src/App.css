@@ -546,8 +546,238 @@ button {
   }
 }
 
-@media (max-width: 720px) {
-  .panes {
+/* ---------- Card: borrar + abrir ---------- */
+.card-trash {
+  background: none;
+  border: none;
+  color: var(--faint);
+  font-size: 12px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.card:hover .card-trash {
+  opacity: 1;
+}
+.card-trash:hover {
+  color: var(--danger);
+  background: rgba(255, 92, 92, 0.12);
+}
+.card-actions {
+  margin-top: 16px;
+}
+.card-open-btn {
+  background: none;
+  border: 1px solid var(--line-2);
+  color: var(--accent);
+  font-size: 12px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.card-open-btn:hover {
+  border-color: rgba(184, 255, 46, 0.5);
+  background: rgba(184, 255, 46, 0.08);
+}
+
+/* ---------- Modal de borrado (danger) ---------- */
+.modal.danger {
+  border-color: rgba(255, 92, 92, 0.35);
+}
+.danger-tag {
+  color: var(--danger);
+}
+.confirm-msg {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0 0 22px;
+}
+.confirm-msg code,
+.confirm-msg strong {
+  color: var(--text);
+}
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--danger);
+  color: #1a0606;
+  border: none;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 11px 18px;
+  border-radius: 10px;
+}
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.btn-danger:disabled {
+  opacity: 0.6;
+}
+
+/* ============================================================
+   Explorador de archivos (IDE)
+   ============================================================ */
+.panes-3 {
+  grid-template-columns: 232px 1fr 1fr;
+}
+
+.explorer {
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg-2);
+  border-right: 1px solid var(--line-2);
+  font-size: 12.5px;
+  padding-bottom: 10px;
+}
+.explorer-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
+}
+.explorer-title {
+  font-size: 10.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ex-action {
+  background: none;
+  border: 1px solid var(--line-2);
+  color: var(--text);
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+}
+.ex-action:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.new-file-input {
+  width: calc(100% - 16px);
+  margin: 8px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  padding: 7px 9px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  outline: none;
+}
+
+.tree {
+  padding-top: 6px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  text-align: left;
+  padding: 5px 10px;
+  gap: 6px;
+  border-left: 2px solid transparent;
+}
+.row.dir {
+  color: var(--text);
+}
+.row.dir:hover,
+.row.file:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.caret {
+  color: var(--faint);
+  font-size: 10px;
+  width: 10px;
+}
+.row.file {
+  justify-content: space-between;
+  padding-right: 8px;
+}
+.file-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-icon {
+  color: var(--faint);
+  font-size: 10px;
+}
+.row.file.active {
+  background: rgba(184, 255, 46, 0.08);
+  border-left-color: var(--accent);
+  color: var(--text);
+}
+.row.file.active .file-icon {
+  color: var(--accent);
+}
+.dirty-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-left: 6px;
+  flex: none;
+}
+.row-del {
+  background: none;
+  border: none;
+  color: var(--faint);
+  font-size: 10px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0;
+}
+.row.file:hover .row-del {
+  opacity: 1;
+}
+.row-del:hover {
+  color: var(--danger);
+  background: rgba(255, 92, 92, 0.12);
+}
+
+.no-file {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--faint);
+  font-size: 13px;
+}
+
+@media (max-width: 860px) {
+  .panes,
+  .panes-3 {
     grid-template-columns: 1fr;
   }
   .section-bar {

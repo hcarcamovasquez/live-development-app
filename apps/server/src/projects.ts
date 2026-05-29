@@ -1,9 +1,9 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdir, writeFile, access } from 'node:fs/promises'
+import { mkdir, writeFile, access, rm } from 'node:fs/promises'
 import { createServer as netCreateServer } from 'node:net'
 import { join, dirname } from 'node:path'
 import { projectsDir, previewPortBase } from './paths.js'
-import { listProjectRows, getProjectRow, insertProjectRow } from './db.js'
+import { listProjectRows, getProjectRow, insertProjectRow, deleteProjectRow } from './db.js'
 
 /**
  * Gestiona MÚLTIPLES proyectos. Cada proyecto es una app Vite COMPLETA e
@@ -197,6 +197,23 @@ async function spawnDevServer(s: string): Promise<{ url: string; port: number }>
   running.set(s, { port, child, url })
   child.on('exit', () => running.delete(s))
   return { url, port }
+}
+
+/** Detiene el dev server de un proyecto (si está corriendo). */
+export function stopProject(s: string): void {
+  const live = running.get(s)
+  if (live) {
+    live.child.kill()
+    running.delete(s)
+  }
+}
+
+/** Borra un proyecto: detiene su dev server, lo quita de SQLite y del disco. */
+export async function deleteProject(s: string): Promise<void> {
+  if (!getProjectRow(s)) throw new Error('Proyecto no encontrado')
+  stopProject(s)
+  deleteProjectRow(s)
+  await rm(projectPath(s), { recursive: true, force: true })
 }
 
 /** Baja todos los dev servers (al cerrar el editor). */
