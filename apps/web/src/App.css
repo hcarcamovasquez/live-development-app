@@ -668,9 +668,12 @@ button {
   border-color: var(--accent);
   color: var(--accent);
 }
+.new-file-row {
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+}
 .new-file-input {
-  width: calc(100% - 16px);
-  margin: 8px;
+  width: 100%;
   background: var(--bg);
   border: 1px solid var(--accent);
   border-radius: 7px;
@@ -679,6 +682,12 @@ button {
   font-family: var(--mono);
   font-size: 12.5px;
   outline: none;
+}
+.new-file-hint {
+  display: block;
+  margin-top: 5px;
+  font-size: 10px;
+  color: var(--faint);
 }
 
 .tree {
@@ -700,10 +709,44 @@ button {
 }
 .row.dir {
   color: var(--text);
+  justify-content: space-between;
 }
 .row.dir:hover,
 .row.file:hover {
   background: rgba(255, 255, 255, 0.03);
+}
+.dir-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-add {
+  background: none;
+  border: none;
+  color: var(--faint);
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 4px;
+  opacity: 0;
+}
+.row.dir:hover .row-add {
+  opacity: 1;
+}
+.row-add:hover {
+  color: var(--accent);
+  background: rgba(184, 255, 46, 0.12);
 }
 .caret {
   color: var(--faint);

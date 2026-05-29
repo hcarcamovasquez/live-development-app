@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 export type TreeNode = {
   name: string
@@ -26,45 +26,85 @@ export function FileExplorer({
   onNewFile,
   onDeleteFile,
 }: Props) {
-  const [creating, setCreating] = useState(false)
+  // Carpetas expandidas (por ruta). Se eleva aquí para poder abrir los
+  // ancestros de un archivo recién creado en una subcarpeta anidada.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // Creación en curso: ruta del directorio destino ('' = raíz), o null.
+  const [creatingIn, setCreatingIn] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
 
+  // Al (re)cargar el árbol, asegura las carpetas de primer nivel expandidas.
+  useEffect(() => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      for (const n of tree) if (n.type === 'dir') next.add(n.path)
+      return next
+    })
+  }, [tree])
+
+  const toggle = (path: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      next.has(path) ? next.delete(path) : next.add(path)
+      return next
+    })
+
+  const expandAncestors = (filePath: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      const parts = filePath.split('/')
+      parts.pop() // quita el nombre del archivo
+      let acc = ''
+      for (const part of parts) {
+        acc = acc ? `${acc}/${part}` : part
+        next.add(acc)
+      }
+      return next
+    })
+
+  const startCreate = (dir: string) => {
+    setCreatingIn(dir)
+    setDraft(dir ? `${dir}/` : '')
+  }
+
   const submitNew = () => {
-    const p = draft.trim()
-    if (p) onNewFile(p)
+    const p = draft.trim().replace(/^\/+/, '')
+    if (p) {
+      onNewFile(p)
+      expandAncestors(p)
+    }
     setDraft('')
-    setCreating(false)
+    setCreatingIn(null)
   }
 
   return (
     <aside className="explorer">
       <div className="explorer-head">
         <span className="explorer-title">explorer</span>
-        <button
-          className="ex-action"
-          title="Nuevo archivo"
-          onClick={() => setCreating((v) => !v)}
-        >
+        <button className="ex-action" title="Nuevo archivo" onClick={() => startCreate('')}>
           +
         </button>
       </div>
 
-      {creating && (
-        <input
-          className="new-file-input"
-          autoFocus
-          value={draft}
-          placeholder="src/Boton.tsx"
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submitNew()
-            if (e.key === 'Escape') {
-              setCreating(false)
-              setDraft('')
-            }
-          }}
-          onBlur={() => (draft.trim() ? submitNew() : setCreating(false))}
-        />
+      {creatingIn !== null && (
+        <div className="new-file-row">
+          <input
+            className="new-file-input"
+            autoFocus
+            value={draft}
+            placeholder="src/components/Boton.tsx"
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submitNew()
+              if (e.key === 'Escape') {
+                setDraft('')
+                setCreatingIn(null)
+              }
+            }}
+            onBlur={() => (draft.trim() ? submitNew() : setCreatingIn(null))}
+          />
+          <span className="new-file-hint">usa “/” para subcarpetas anidadas</span>
+        </div>
       )}
 
       <div className="tree" key={project}>
@@ -74,8 +114,11 @@ export function FileExplorer({
             node={node}
             depth={0}
             active={active}
+            expanded={expanded}
             dirtyPaths={dirtyPaths}
+            onToggle={toggle}
             onOpen={onOpen}
+            onCreateIn={startCreate}
             onDeleteFile={onDeleteFile}
           />
         ))}
@@ -88,36 +131,57 @@ function TreeItem({
   node,
   depth,
   active,
+  expanded,
   dirtyPaths,
+  onToggle,
   onOpen,
+  onCreateIn,
   onDeleteFile,
 }: {
   node: TreeNode
   depth: number
   active: string
+  expanded: Set<string>
   dirtyPaths: Set<string>
+  onToggle: (path: string) => void
   onOpen: (path: string) => void
+  onCreateIn: (dir: string) => void
   onDeleteFile: (path: string) => void
 }) {
-  const [open, setOpen] = useState(depth < 1)
   const pad = { paddingLeft: `${10 + depth * 14}px` }
 
   if (node.type === 'dir') {
+    const isOpen = expanded.has(node.path)
     return (
       <div>
-        <button className="row dir" style={pad} onClick={() => setOpen((v) => !v)}>
-          <span className="caret">{open ? '▾' : '▸'}</span>
-          <span className="row-name">{node.name}</span>
-        </button>
-        {open &&
+        <div className="row dir" style={pad}>
+          <button className="row-name dir-btn" onClick={() => onToggle(node.path)}>
+            <span className="caret">{isOpen ? '▾' : '▸'}</span>
+            {node.name}
+          </button>
+          <button
+            className="row-add"
+            title={`Nuevo archivo en ${node.name}/`}
+            onClick={(e) => {
+              e.stopPropagation()
+              onCreateIn(node.path)
+            }}
+          >
+            +
+          </button>
+        </div>
+        {isOpen &&
           node.children?.map((child) => (
             <TreeItem
               key={child.path}
               node={child}
               depth={depth + 1}
               active={active}
+              expanded={expanded}
               dirtyPaths={dirtyPaths}
+              onToggle={onToggle}
               onOpen={onOpen}
+              onCreateIn={onCreateIn}
               onDeleteFile={onDeleteFile}
             />
           ))}
