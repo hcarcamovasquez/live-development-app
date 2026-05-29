@@ -36,6 +36,10 @@ API. El registro de proyectos se guarda en **SQLite** del lado del servidor.
   **del proyecto** hace HMR → el iframe se actualiza sin recargar el editor.
 - **Gestionar**: cada tarjeta del listado permite **abrir** o **borrar** el proyecto
   (con confirmación; el borrado elimina dev server + carpeta + registro).
+- **Terminal integrada** (abajo, estilo WebStorm/VS Code): **PTYs reales**
+  (`node-pty`) ancladas al directorio del proyecto, vía WebSocket + **xterm.js**.
+  Permite recorrer el filesystem y ejecutar comandos (`ls`, `git`, `npm`, …), con
+  **varias terminales en pestañas** (`+` para abrir, cada una con su sesión).
 
 > SQLite va en el **servidor** (no en el navegador) porque es quien posee el
 > filesystem y los dev servers; el navegador no podría ver esas carpetas ni puertos.
@@ -81,6 +85,7 @@ y edita `src/UserApp.tsx`: el preview se actualiza en caliente.
 | `PORT`              | `3000`                                       | Puerto del editor                  |
 | `PROJECTS_DIR`      | `~/.live-development-app/projects`           | Dónde se persisten los proyectos   |
 | `PREVIEW_PORT_BASE` | `5174`                                       | Puerto base de los dev servers     |
+| `TERMINAL_PORT`     | `3001`                                       | Puerto del WebSocket de terminales |
 | `DB_PATH`           | `$PROJECTS_DIR/registry.db`                  | Ruta de la base SQLite             |
 
 ## API

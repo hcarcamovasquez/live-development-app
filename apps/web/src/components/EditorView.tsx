@@ -3,6 +3,7 @@ import { Editor } from './Editor'
 import { Preview } from './Preview'
 import { FileExplorer, type TreeNode } from './FileExplorer'
 import { ConfirmModal } from './ConfirmModal'
+import { TerminalDock } from './TerminalPanel'
 import { fileMeta, langOf } from './fileMeta'
 import '../ide.css'
 
@@ -19,6 +20,8 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
   const [cursor, setCursor] = useState({ line: 1, col: 1 })
   const [saveFlash, setSaveFlash] = useState(false)
   const [delFile, setDelFile] = useState<string | null>(null)
+  const [showTerminal, setShowTerminal] = useState(false)
+  const [terminalPort, setTerminalPort] = useState(0)
 
   const filesRef = useRef(files)
   filesRef.current = files
@@ -55,6 +58,10 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
     fetch(`/api/projects/${encodeURIComponent(project)}/open`, { method: 'POST' })
       .then((r) => r.json())
       .then((d) => !cancelled && setPreviewUrl(d.url ?? ''))
+      .catch(() => {})
+    fetch('/api/config')
+      .then((r) => r.json())
+      .then((d) => !cancelled && setTerminalPort(d.terminalPort ?? 0))
       .catch(() => {})
     loadTree().then(() => {
       if (!cancelled) openFile(DEFAULT_FILE)
@@ -231,8 +238,25 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
         <Preview url={previewUrl} nonce={previewNonce} onReload={() => setPreviewNonce((n) => n + 1)} />
       </div>
 
-      {/* Status bar inferior */}
+      {/* Terminal integrada (PTY del proyecto) */}
+      {showTerminal && terminalPort > 0 && (
+        <TerminalDock
+          project={project}
+          terminalPort={terminalPort}
+          onClose={() => setShowTerminal(false)}
+        />
+      )}
+
+      {/* Status bar inferior (con el stripe de tool windows) */}
       <div className="ws-statusbar">
+        <button
+          className={`ws-tool-toggle ${showTerminal ? 'on' : ''}`}
+          onClick={() => setShowTerminal((v) => !v)}
+          title="Terminal (abajo)"
+        >
+          <span className="ws-term-icon">›_</span> Terminal
+        </button>
+        <span className="ws-status-divider" />
         <span className={`ws-status-conn ${previewUrl ? 'up' : ''}`}>
           <span className="ws-conn-dot" />
           {previewUrl ? `preview ${previewUrl.replace('http://', '')}` : 'iniciando…'}

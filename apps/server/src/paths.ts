@@ -19,3 +19,6 @@ export const projectsDir =
 export const previewPortBase = Number(
   process.env.PREVIEW_PORT_BASE ?? process.env.PREVIEW_PORT ?? 5174,
 )
+
+// Puerto del WebSocket de terminales (PTY por proyecto).
+export const terminalPort = Number(process.env.TERMINAL_PORT ?? 3001)

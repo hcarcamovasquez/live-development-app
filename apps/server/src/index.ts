@@ -7,6 +7,7 @@ import { resolve } from 'node:path'
 import { api } from './api.js'
 import { webRoot, webDist, projectsDir } from './paths.js'
 import { stopAll } from './projects.js'
+import { startTerminalServer, stopTerminals } from './terminal.js'
 
 const PORT = Number(process.env.PORT ?? 3000)
 const isProd = process.env.NODE_ENV === 'production'
@@ -14,10 +15,14 @@ const isProd = process.env.NODE_ENV === 'production'
 // Asegura el directorio donde se persisten los proyectos.
 await mkdir(projectsDir, { recursive: true })
 
-// Al cerrar el editor, baja los dev servers de los proyectos.
+// Servidor de terminales (PTY por WebSocket).
+startTerminalServer()
+
+// Al cerrar el editor, baja los dev servers y las terminales.
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, () => {
     stopAll()
+    stopTerminals()
     process.exit(0)
   })
 }

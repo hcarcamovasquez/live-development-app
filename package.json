@@ -10,7 +10,8 @@
     "dev": "pnpm --filter server dev",
     "build": "pnpm --filter web build && pnpm --filter server build",
     "start": "pnpm --filter server start",
-    "lint": "pnpm --filter web lint"
+    "lint": "pnpm --filter web lint",
+    "postinstall": "node scripts/fix-pty.mjs"
   },
   "devDependencies": {
     "typescript": "~6.0.2"
