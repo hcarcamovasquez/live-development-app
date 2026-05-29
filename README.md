@@ -101,10 +101,15 @@ traversal (`../`).
 
 ## Diseño
 
-Estética *engineering console*: near-black con rejilla blueprint, acento chartreuse
-que señala "vivo/corriendo", tipografías **Bricolage Grotesque** (display) +
-**JetBrains Mono** (UI), revelado escalonado de tarjetas y estados con punto
-pulsante. Construido con la skill de diseño de frontend.
+Dos vistas con identidad propia, ambas construidas con la skill de diseño:
+
+- **Listado (console)**: estética *engineering console* — near-black con rejilla
+  blueprint, acento chartreuse que señala "vivo/corriendo", **Bricolage Grotesque**
+  (display) + **JetBrains Mono**, tarjetas con revelado escalonado y punto pulsante.
+- **Editor (IDE)**: emulación de **WebStorm/Darcula** — tool window *Project* con
+  árbol e íconos por tipo, **pestañas** de archivos, **breadcrumbs**, **status bar**
+  (posición del cursor, encoding, lenguaje), tema **Darcula** en Monaco con JetBrains
+  Mono, y panel de **preview con chrome de navegador** (URL + recargar).
 
 ## Notas técnicas
 

@@ -3,66 +3,61 @@ import { Editor } from './Editor'
 import { Preview } from './Preview'
 import { FileExplorer, type TreeNode } from './FileExplorer'
 import { ConfirmModal } from './ConfirmModal'
+import { fileMeta, langOf } from './fileMeta'
+import '../ide.css'
 
-type Status = 'idle' | 'loading' | 'saving' | 'saved' | 'error'
 type FileState = { content: string; dirty: boolean }
-
 const DEFAULT_FILE = 'src/UserApp.tsx'
 
 export function EditorView({ project, onBack }: { project: string; onBack: () => void }) {
   const [tree, setTree] = useState<TreeNode[]>([])
   const [active, setActive] = useState('')
+  const [tabs, setTabs] = useState<string[]>([])
   const [files, setFiles] = useState<Record<string, FileState>>({})
-  const [status, setStatus] = useState<Status>('loading')
   const [previewUrl, setPreviewUrl] = useState('')
+  const [previewNonce, setPreviewNonce] = useState(0)
+  const [cursor, setCursor] = useState({ line: 1, col: 1 })
+  const [saveFlash, setSaveFlash] = useState(false)
   const [delFile, setDelFile] = useState<string | null>(null)
-  const [, force] = useState(0)
 
   const filesRef = useRef(files)
   filesRef.current = files
   const activeRef = useRef(active)
   activeRef.current = active
 
-  const api = `?project=${encodeURIComponent(project)}`
+  const q = `?project=${encodeURIComponent(project)}`
 
-  const loadTree = useCallback(() => {
-    return fetch(`/api/tree${api}`)
-      .then((r) => r.json())
-      .then((d) => setTree(d.tree ?? []))
-  }, [api])
+  const loadTree = useCallback(
+    () =>
+      fetch(`/api/tree${q}`)
+        .then((r) => r.json())
+        .then((d) => setTree(d.tree ?? [])),
+    [q],
+  )
 
   const openFile = useCallback(
     async (path: string) => {
       setActive(path)
-      if (filesRef.current[path]) {
-        setStatus('idle')
-        return
-      }
-      setStatus('loading')
+      setTabs((t) => (t.includes(path) ? t : [...t, path]))
+      if (filesRef.current[path]) return
       try {
-        const d = await (
-          await fetch(`/api/file${api}&path=${encodeURIComponent(path)}`)
-        ).json()
+        const d = await (await fetch(`/api/file${q}&path=${encodeURIComponent(path)}`)).json()
         setFiles((f) => ({ ...f, [path]: { content: d.content ?? '', dirty: false } }))
-        setStatus('idle')
       } catch {
-        setStatus('error')
+        /* noop */
       }
     },
-    [api],
+    [q],
   )
 
-  // Arranca el dev server + carga el árbol y el archivo por defecto.
   useEffect(() => {
     let cancelled = false
     fetch(`/api/projects/${encodeURIComponent(project)}/open`, { method: 'POST' })
       .then((r) => r.json())
       .then((d) => !cancelled && setPreviewUrl(d.url ?? ''))
       .catch(() => {})
-
     loadTree().then(() => {
-      if (cancelled) return
-      openFile(DEFAULT_FILE)
+      if (!cancelled) openFile(DEFAULT_FILE)
     })
     return () => {
       cancelled = true
@@ -74,7 +69,6 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
     const path = activeRef.current
     const file = filesRef.current[path]
     if (!path || !file) return
-    setStatus('saving')
     try {
       const res = await fetch('/api/file', {
         method: 'POST',
@@ -83,15 +77,26 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
       })
       if (!res.ok) throw new Error(await res.text())
       setFiles((f) => ({ ...f, [path]: { ...f[path], dirty: false } }))
-      setStatus('saved')
-      setTimeout(() => setStatus((s) => (s === 'saved' ? 'idle' : s)), 1200)
+      setSaveFlash(true)
+      setTimeout(() => setSaveFlash(false), 1200)
     } catch {
-      setStatus('error')
+      /* noop */
     }
   }, [project])
 
-  const onChange = (v: string) => {
+  const onChange = (v: string) =>
     setFiles((f) => ({ ...f, [active]: { content: v, dirty: true } }))
+
+  const closeTab = (path: string) => {
+    setTabs((t) => {
+      const idx = t.indexOf(path)
+      const next = t.filter((p) => p !== path)
+      if (path === activeRef.current) {
+        const fallback = next[idx - 1] ?? next[0] ?? ''
+        setActive(fallback)
+      }
+      return next
+    })
   }
 
   const newFile = async (path: string) => {
@@ -102,46 +107,46 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
     })
     await loadTree()
     setFiles((f) => ({ ...f, [path]: { content: '', dirty: false } }))
+    setTabs((t) => (t.includes(path) ? t : [...t, path]))
     setActive(path)
-    force((n) => n + 1)
   }
 
   const confirmDeleteFile = async () => {
     if (!delFile) return
-    await fetch(`/api/file${api}&path=${encodeURIComponent(delFile)}`, { method: 'DELETE' })
+    await fetch(`/api/file${q}&path=${encodeURIComponent(delFile)}`, { method: 'DELETE' })
     setFiles((f) => {
-      const next = { ...f }
-      delete next[delFile]
-      return next
+      const n = { ...f }
+      delete n[delFile]
+      return n
     })
-    if (active === delFile) setActive('')
+    closeTab(delFile)
     setDelFile(null)
     await loadTree()
   }
 
   const current = files[active]
   const dirtyPaths = new Set(Object.entries(files).filter(([, v]) => v.dirty).map(([k]) => k))
+  const segments = active ? active.split('/') : []
 
   return (
-    <div className="ide">
-      <header className="ide-bar">
-        <button className="back" onClick={onBack} title="Volver al listado">
+    <div className="ws-ide">
+      {/* Toolbar superior */}
+      <div className="ws-toolbar">
+        <button className="ws-back" onClick={onBack} title="Volver a proyectos">
           ←
         </button>
-        <span className="bolt small">⚡</span>
-        <span className="ide-project">{project}</span>
-        <span className="ide-file">{active || 'sin archivo'}</span>
-        <span className="spacer" />
-        <span className={`status ${statusClass(status, current?.dirty)}`}>
-          <span className="status-dot" />
-          {statusLabel(status, current?.dirty)}
-        </span>
-        <button className="btn-go sm" onClick={save} disabled={!current}>
-          Guardar <kbd>⌘S</kbd>
+        <span className="ws-module-icon" />
+        <span className="ws-project">{project}</span>
+        <span className="ws-sep">›</span>
+        <span className="ws-dim">live·dev</span>
+        <span className="ws-spacer" />
+        <button className="ws-run" onClick={() => setPreviewNonce((n) => n + 1)} title="Recargar preview">
+          <span className="ws-play" /> Preview
         </button>
-      </header>
+      </div>
 
-      <main className="panes panes-3">
+      {/* Cuerpo: Project | Editor | Preview */}
+      <div className="ws-body">
         <FileExplorer
           project={project}
           tree={tree}
@@ -152,32 +157,99 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
           onDeleteFile={setDelFile}
         />
 
-        <section className="pane editor-pane">
-          {current ? (
-            <Editor
-              path={`${project}/${active}`}
-              language={langOf(active)}
-              value={current.content}
-              onChange={onChange}
-              onSave={save}
-            />
-          ) : (
-            <div className="no-file">Selecciona un archivo en el explorador.</div>
-          )}
-        </section>
+        <div className="ws-editor-area">
+          <div className="ws-tabs">
+            {tabs.map((path) => {
+              const meta = fileMeta(path)
+              return (
+                <div
+                  key={path}
+                  className={`ws-tab ${path === active ? 'active' : ''}`}
+                  onClick={() => openFile(path)}
+                >
+                  <span
+                    className="ws-badge sm"
+                    style={{ background: meta.color, color: meta.dark ? '#1c1c1c' : '#fff' }}
+                  >
+                    {meta.badge}
+                  </span>
+                  <span className="ws-tab-name">{path.split('/').pop()}</span>
+                  {files[path]?.dirty && <span className="ws-dirty" />}
+                  <button
+                    className="ws-tab-close"
+                    title="Cerrar"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      closeTab(path)
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              )
+            })}
+          </div>
 
-        <section className="pane preview-pane">
-          <div className="preview-label">
-            <span className={`status ${previewUrl ? 'on' : 'off'}`}>
-              <span className="status-dot" />
+          {active && (
+            <div className="ws-breadcrumb">
+              {segments.map((seg, i) => (
+                <span key={i} className="ws-crumb">
+                  {i === segments.length - 1 && (
+                    <span
+                      className="ws-badge xs"
+                      style={{
+                        background: fileMeta(active).color,
+                        color: fileMeta(active).dark ? '#1c1c1c' : '#fff',
+                      }}
+                    >
+                      {fileMeta(active).badge}
+                    </span>
+                  )}
+                  {seg}
+                  {i < segments.length - 1 && <span className="ws-crumb-sep">›</span>}
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="ws-monaco">
+            {current ? (
+              <Editor
+                path={`${project}/${active}`}
+                language={langOf(active)}
+                value={current.content}
+                onChange={onChange}
+                onSave={save}
+                onCursor={(line, col) => setCursor({ line, col })}
+              />
+            ) : (
+              <div className="ws-no-file">Selecciona un archivo en el panel Project.</div>
+            )}
+          </div>
+        </div>
+
+        <Preview url={previewUrl} nonce={previewNonce} onReload={() => setPreviewNonce((n) => n + 1)} />
+      </div>
+
+      {/* Status bar inferior */}
+      <div className="ws-statusbar">
+        <span className={`ws-status-conn ${previewUrl ? 'up' : ''}`}>
+          <span className="ws-conn-dot" />
+          {previewUrl ? `preview ${previewUrl.replace('http://', '')}` : 'iniciando…'}
+        </span>
+        {saveFlash && <span className="ws-saved">✓ guardado · hot reload</span>}
+        <span className="ws-spacer" />
+        {active && (
+          <>
+            <span>
+              {cursor.line}:{cursor.col}
             </span>
-            preview · {previewUrl || 'arrancando dev server…'}
-          </div>
-          <div className="preview-frame">
-            <Preview url={previewUrl} />
-          </div>
-        </section>
-      </main>
+            <span>2 espacios</span>
+            <span>UTF-8</span>
+            <span className="ws-filetype">{fileMeta(active).type}</span>
+          </>
+        )}
+      </div>
 
       {delFile && (
         <ConfirmModal
@@ -193,29 +265,4 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
       )}
     </div>
   )
-}
-
-function langOf(path: string): string {
-  if (/\.tsx?$/.test(path)) return 'typescript'
-  if (/\.jsx?$/.test(path)) return 'javascript'
-  if (/\.css$/.test(path)) return 'css'
-  if (/\.html?$/.test(path)) return 'html'
-  if (/\.json$/.test(path)) return 'json'
-  if (/\.md$/.test(path)) return 'markdown'
-  return 'plaintext'
-}
-
-function statusClass(s: Status, dirtyNow?: boolean): string {
-  if (s === 'saved') return 'on'
-  if (s === 'error') return 'err'
-  if (s === 'saving') return 'busy'
-  return dirtyNow ? 'busy' : 'off'
-}
-
-function statusLabel(s: Status, dirtyNow?: boolean): string {
-  if (s === 'loading') return 'cargando'
-  if (s === 'saving') return 'guardando'
-  if (s === 'saved') return 'guardado · hot reload'
-  if (s === 'error') return 'error'
-  return dirtyNow ? 'sin guardar' : 'listo'
 }

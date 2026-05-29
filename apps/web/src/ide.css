@@ -1,0 +1,502 @@
+/* ============================================================
+   IDE view — emulación WebStorm / Darcula
+   ============================================================ */
+.ws-ide {
+  --editor: #2b2b2b;
+  --panel: #3c3f41;
+  --panel-2: #313335;
+  --bar: #3c3f41;
+  --border: #2b2b2b;
+  --border-2: #4e5254;
+  --line: #323232;
+  --txt: #bbbbbb;
+  --txt-2: #a9b7c6;
+  --dim: #808080;
+  --sel: #2f5c8f;
+  --sel-line: #0d2d4d;
+  --blue: #4a88c7;
+  --green: #59a869;
+
+  position: relative;
+  z-index: 1;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--editor);
+  color: var(--txt);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 13px;
+}
+
+/* ---------- Toolbar ---------- */
+.ws-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px;
+  background: var(--bar);
+  border-bottom: 1px solid #2f2f2f;
+}
+.ws-back {
+  background: none;
+  border: none;
+  color: var(--txt);
+  font-size: 16px;
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+}
+.ws-back:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.ws-module-icon {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, #f97a53, #b8ff2e 60%, #2d9cdb);
+}
+.ws-project {
+  font-weight: 600;
+  color: #d6d6d6;
+}
+.ws-sep,
+.ws-dim {
+  color: var(--dim);
+}
+.ws-spacer {
+  flex: 1;
+}
+.ws-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: none;
+  border: 1px solid var(--border-2);
+  color: var(--txt);
+  font-size: 12px;
+  padding: 4px 11px;
+  border-radius: 6px;
+}
+.ws-run:hover {
+  background: rgba(89, 168, 105, 0.16);
+  border-color: var(--green);
+}
+.ws-play {
+  width: 0;
+  height: 0;
+  border-left: 8px solid var(--green);
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+}
+
+/* ---------- Body grid ---------- */
+.ws-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 250px 1fr 1fr;
+  min-height: 0;
+}
+
+/* ---------- Tool window: Project ---------- */
+.ws-explorer {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel);
+  border-right: 1px solid #2f2f2f;
+  overflow: hidden;
+}
+.ws-tw-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 27px;
+  padding: 0 10px;
+  border-bottom: 1px solid #2f2f2f;
+}
+.ws-tw-title {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #9a9a9a;
+}
+.ws-tw-action {
+  background: none;
+  border: none;
+  color: #9a9a9a;
+  font-size: 15px;
+  line-height: 1;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+}
+.ws-tw-action:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.ws-tree {
+  flex: 1;
+  overflow: auto;
+  padding: 3px 0;
+  user-select: none;
+}
+
+.ws-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 23px;
+  padding-right: 8px;
+  cursor: pointer;
+  color: var(--txt);
+  white-space: nowrap;
+}
+.ws-row:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+.ws-row.root {
+  font-weight: 600;
+  color: #d6d6d6;
+  cursor: default;
+}
+.ws-row.root:hover {
+  background: none;
+}
+.ws-row.file.active {
+  background: var(--sel);
+  color: #fff;
+}
+.ws-chevron {
+  width: 10px;
+  font-size: 9px;
+  color: #8a8a8a;
+  flex: none;
+  text-align: center;
+}
+.ws-chevron.empty {
+  visibility: hidden;
+}
+.ws-row.file.active .ws-chevron {
+  color: #cfe0f0;
+}
+.ws-root-icon {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, #f97a53, #2d9cdb);
+  flex: none;
+}
+.ws-folder {
+  flex: none;
+}
+.ws-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ws-badge {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  display: grid;
+  place-items: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+.ws-badge.sm {
+  width: 15px;
+  height: 15px;
+  font-size: 7.5px;
+}
+.ws-badge.xs {
+  width: 14px;
+  height: 14px;
+  font-size: 7px;
+  margin-right: 5px;
+}
+.ws-dirty {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--blue);
+  flex: none;
+  margin-left: 4px;
+}
+.ws-row.file.active .ws-dirty {
+  background: #fff;
+}
+.ws-row-add,
+.ws-row-del {
+  background: none;
+  border: none;
+  color: #9a9a9a;
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  opacity: 0;
+  flex: none;
+}
+.ws-row-add {
+  font-size: 14px;
+  line-height: 1;
+}
+.ws-row.dir:hover .ws-row-add,
+.ws-row.file:hover .ws-row-del {
+  opacity: 1;
+}
+.ws-row-add:hover {
+  color: var(--green);
+  background: rgba(255, 255, 255, 0.08);
+}
+.ws-row-del:hover {
+  color: #ff7676;
+  background: rgba(255, 118, 118, 0.16);
+}
+.ws-new-row {
+  padding-right: 8px;
+  padding-top: 2px;
+  padding-bottom: 4px;
+}
+.ws-new-input {
+  width: 100%;
+  background: var(--editor);
+  border: 1px solid var(--blue);
+  border-radius: 4px;
+  padding: 4px 7px;
+  color: var(--txt-2);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  outline: none;
+}
+
+/* ---------- Editor area ---------- */
+.ws-editor-area {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--editor);
+}
+.ws-tabs {
+  display: flex;
+  align-items: stretch;
+  height: 31px;
+  background: var(--panel);
+  border-bottom: 1px solid #2f2f2f;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.ws-tabs::-webkit-scrollbar {
+  height: 0;
+}
+.ws-tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px 0 11px;
+  border-right: 1px solid #2f2f2f;
+  color: #a4a4a4;
+  cursor: pointer;
+  max-width: 220px;
+  flex: none;
+}
+.ws-tab:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.ws-tab.active {
+  background: var(--editor);
+  color: #e6e6e6;
+  box-shadow: inset 0 -2px 0 var(--blue);
+}
+.ws-tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-tab .ws-dirty {
+  margin-left: 0;
+}
+.ws-tab-close {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 10px;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  opacity: 0;
+}
+.ws-tab:hover .ws-tab-close,
+.ws-tab.active .ws-tab-close {
+  opacity: 1;
+}
+.ws-tab-close:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.ws-breadcrumb {
+  display: flex;
+  align-items: center;
+  height: 23px;
+  padding: 0 12px;
+  font-size: 11.5px;
+  color: #9a9a9a;
+  background: var(--editor);
+  border-bottom: 1px solid #2f2f2f;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.ws-crumb {
+  display: inline-flex;
+  align-items: center;
+}
+.ws-crumb-sep {
+  color: #5e5e5e;
+  margin: 0 6px;
+}
+.ws-monaco {
+  flex: 1;
+  min-height: 0;
+}
+.ws-no-file {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: #6a6a6a;
+  font-size: 13px;
+}
+
+/* ---------- Preview (browser tool window) ---------- */
+.ws-preview {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+  border-left: 1px solid #2f2f2f;
+}
+.ws-browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 31px;
+  padding: 0 8px;
+  border-bottom: 1px solid #2f2f2f;
+}
+.ws-icon-btn {
+  background: none;
+  border: none;
+  color: #b0b0b0;
+  font-size: 14px;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  text-decoration: none;
+  flex: none;
+}
+.ws-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.ws-url {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  background: var(--editor);
+  border: 1px solid var(--border-2);
+  border-radius: 13px;
+  padding: 4px 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  color: #a9b7c6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-conn {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6a6a6a;
+  flex: none;
+}
+.ws-conn.up {
+  background: var(--green);
+  box-shadow: 0 0 6px rgba(89, 168, 105, 0.8);
+}
+.ws-preview-frame {
+  flex: 1;
+  background: #fff;
+  min-height: 0;
+}
+.ws-preview-frame iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+.ws-preview-empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: #6a6a6a;
+  font-size: 12.5px;
+  background: var(--panel);
+}
+
+/* ---------- Status bar ---------- */
+.ws-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  height: 23px;
+  padding: 0 12px;
+  background: var(--bar);
+  border-top: 1px solid #2f2f2f;
+  font-size: 11.5px;
+  color: #9a9a9a;
+}
+.ws-status-conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #8a8a8a;
+}
+.ws-status-conn.up {
+  color: #9fbf9f;
+}
+.ws-conn-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6a6a6a;
+}
+.ws-status-conn.up .ws-conn-dot {
+  background: var(--green);
+}
+.ws-saved {
+  color: var(--green);
+}
+.ws-filetype {
+  color: #b0b0b0;
+}
+
+@media (max-width: 900px) {
+  .ws-body {
+    grid-template-columns: 200px 1fr;
+  }
+  .ws-preview {
+    display: none;
+  }
+}

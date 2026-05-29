@@ -1,17 +1,44 @@
 /**
- * Muestra el PROYECTO independiente en un iframe que apunta a SU propio dev
- * server. El hot reload ocurre dentro de ese iframe (Vite del proyecto), de
- * forma totalmente desacoplada del editor.
+ * Tool window de preview con chrome de navegador (estilo IDE): barra de URL,
+ * recargar y abrir en pestaña nueva. El iframe apunta al dev server propio del
+ * proyecto; el hot reload ocurre dentro de él.
  */
-export function Preview({ url }: { url: string }) {
-  if (!url) {
-    return <div style={{ padding: 16, color: '#888' }}>Arrancando proyecto…</div>
-  }
+export function Preview({
+  url,
+  nonce,
+  onReload,
+}: {
+  url: string
+  nonce: number
+  onReload: () => void
+}) {
   return (
-    <iframe
-      title="preview"
-      src={url}
-      style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
-    />
+    <div className="ws-preview">
+      <div className="ws-browser-bar">
+        <button className="ws-icon-btn" title="Recargar" onClick={onReload} disabled={!url}>
+          ⟳
+        </button>
+        <div className="ws-url">
+          <span className={`ws-conn ${url ? 'up' : ''}`} />
+          {url || 'arrancando dev server…'}
+        </div>
+        <a
+          className="ws-icon-btn"
+          title="Abrir en pestaña nueva"
+          href={url || '#'}
+          target="_blank"
+          rel="noreferrer"
+        >
+          ↗
+        </a>
+      </div>
+      <div className="ws-preview-frame">
+        {url ? (
+          <iframe key={nonce} title="preview" src={url} />
+        ) : (
+          <div className="ws-preview-empty">esperando al dev server del proyecto…</div>
+        )}
+      </div>
+    </div>
   )
 }

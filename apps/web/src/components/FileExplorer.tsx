@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { fileMeta } from './fileMeta'
 
 export type TreeNode = {
   name: string
@@ -26,14 +27,10 @@ export function FileExplorer({
   onNewFile,
   onDeleteFile,
 }: Props) {
-  // Carpetas expandidas (por ruta). Se eleva aquí para poder abrir los
-  // ancestros de un archivo recién creado en una subcarpeta anidada.
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  // Creación en curso: ruta del directorio destino ('' = raíz), o null.
   const [creatingIn, setCreatingIn] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
 
-  // Al (re)cargar el árbol, asegura las carpetas de primer nivel expandidas.
   useEffect(() => {
     setExpanded((prev) => {
       const next = new Set(prev)
@@ -53,7 +50,7 @@ export function FileExplorer({
     setExpanded((prev) => {
       const next = new Set(prev)
       const parts = filePath.split('/')
-      parts.pop() // quita el nombre del archivo
+      parts.pop()
       let acc = ''
       for (const part of parts) {
         acc = acc ? `${acc}/${part}` : part
@@ -78,41 +75,47 @@ export function FileExplorer({
   }
 
   return (
-    <aside className="explorer">
-      <div className="explorer-head">
-        <span className="explorer-title">explorer</span>
-        <button className="ex-action" title="Nuevo archivo" onClick={() => startCreate('')}>
+    <aside className="ws-explorer">
+      <div className="ws-tw-head">
+        <span className="ws-tw-title">Project</span>
+        <button className="ws-tw-action" title="Nuevo archivo" onClick={() => startCreate('')}>
           +
         </button>
       </div>
 
-      {creatingIn !== null && (
-        <div className="new-file-row">
-          <input
-            className="new-file-input"
-            autoFocus
-            value={draft}
-            placeholder="src/components/Boton.tsx"
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') submitNew()
-              if (e.key === 'Escape') {
-                setDraft('')
-                setCreatingIn(null)
-              }
-            }}
-            onBlur={() => (draft.trim() ? submitNew() : setCreatingIn(null))}
-          />
-          <span className="new-file-hint">usa “/” para subcarpetas anidadas</span>
+      <div className="ws-tree">
+        {/* Nodo raíz: el proyecto (estilo content root de WebStorm). */}
+        <div className="ws-row root" style={{ paddingLeft: 8 }}>
+          <span className="ws-chevron">▾</span>
+          <span className="ws-root-icon" />
+          <span className="ws-row-name">{project}</span>
         </div>
-      )}
 
-      <div className="tree" key={project}>
+        {creatingIn !== null && (
+          <div className="ws-new-row" style={{ paddingLeft: 26 }}>
+            <input
+              className="ws-new-input"
+              autoFocus
+              value={draft}
+              placeholder="src/components/Boton.tsx"
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitNew()
+                if (e.key === 'Escape') {
+                  setDraft('')
+                  setCreatingIn(null)
+                }
+              }}
+              onBlur={() => (draft.trim() ? submitNew() : setCreatingIn(null))}
+            />
+          </div>
+        )}
+
         {tree.map((node) => (
           <TreeItem
             key={node.path}
             node={node}
-            depth={0}
+            depth={1}
             active={active}
             expanded={expanded}
             dirtyPaths={dirtyPaths}
@@ -148,19 +151,18 @@ function TreeItem({
   onCreateIn: (dir: string) => void
   onDeleteFile: (path: string) => void
 }) {
-  const pad = { paddingLeft: `${10 + depth * 14}px` }
+  const indent = 8 + depth * 14
 
   if (node.type === 'dir') {
     const isOpen = expanded.has(node.path)
     return (
       <div>
-        <div className="row dir" style={pad}>
-          <button className="row-name dir-btn" onClick={() => onToggle(node.path)}>
-            <span className="caret">{isOpen ? '▾' : '▸'}</span>
-            {node.name}
-          </button>
+        <div className="ws-row dir" style={{ paddingLeft: indent }} onClick={() => onToggle(node.path)}>
+          <span className="ws-chevron">{isOpen ? '▾' : '▸'}</span>
+          <FolderIcon open={isOpen} />
+          <span className="ws-row-name">{node.name}</span>
           <button
-            className="row-add"
+            className="ws-row-add"
             title={`Nuevo archivo en ${node.name}/`}
             onClick={(e) => {
               e.stopPropagation()
@@ -191,16 +193,25 @@ function TreeItem({
 
   const isActive = node.path === active
   const isDirty = dirtyPaths.has(node.path)
+  const meta = fileMeta(node.name)
 
   return (
-    <div className={`row file ${isActive ? 'active' : ''}`} style={pad}>
-      <button className="row-name file-btn" onClick={() => onOpen(node.path)}>
-        <span className="file-icon">{icon(node.name)}</span>
-        {node.name}
-        {isDirty && <span className="dirty-dot" title="sin guardar" />}
-      </button>
+    <div
+      className={`ws-row file ${isActive ? 'active' : ''}`}
+      style={{ paddingLeft: indent }}
+      onClick={() => onOpen(node.path)}
+    >
+      <span className="ws-chevron empty" />
+      <span
+        className="ws-badge"
+        style={{ background: meta.color, color: meta.dark ? '#1c1c1c' : '#fff' }}
+      >
+        {meta.badge}
+      </span>
+      <span className="ws-row-name">{node.name}</span>
+      {isDirty && <span className="ws-dirty" title="sin guardar" />}
       <button
-        className="row-del"
+        className="ws-row-del"
         title="Borrar archivo"
         onClick={(e) => {
           e.stopPropagation()
@@ -213,11 +224,13 @@ function TreeItem({
   )
 }
 
-function icon(name: string): string {
-  if (/\.tsx?$/.test(name)) return '◆'
-  if (/\.jsx?$/.test(name)) return '◇'
-  if (/\.css$/.test(name)) return '▣'
-  if (/\.html?$/.test(name)) return '◧'
-  if (/\.json$/.test(name)) return '⟦'
-  return '·'
+function FolderIcon({ open }: { open: boolean }) {
+  return (
+    <svg className="ws-folder" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        fill={open ? '#8a9aa8' : '#7d8c99'}
+        d="M1.5 3.5h4l1.5 1.5h7.5a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H1.5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"
+      />
+    </svg>
+  )
 }
