@@ -113,8 +113,47 @@
 .ws-body {
   flex: 1;
   display: grid;
-  grid-template-columns: 250px 1fr 1fr;
+  grid-template-columns: 250px 5px minmax(0, 1fr) 5px 1fr;
   min-height: 0;
+}
+
+/* ---------- Divisores redimensionables ---------- */
+.ws-split-v {
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  z-index: 5;
+}
+.ws-split-h {
+  height: 5px;
+  cursor: row-resize;
+  background: transparent;
+  position: relative;
+  z-index: 5;
+  flex: none;
+}
+.ws-split-v::after {
+  content: '';
+  position: absolute;
+  inset: 0 2px;
+  background: #2f2f2f;
+  transition: background 0.12s ease;
+}
+.ws-split-h::after {
+  content: '';
+  position: absolute;
+  inset: 2px 0;
+  background: #2f2f2f;
+  transition: background 0.12s ease;
+}
+.ws-split-v:hover::after,
+.ws-split-h:hover::after {
+  background: var(--blue);
+}
+.ws-drag-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
 }
 
 /* ---------- Tool window: Project ---------- */
@@ -474,12 +513,17 @@
 }
 
 /* ---------- Terminal integrada ---------- */
+.ws-terminal-wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 .ws-terminal {
-  height: 260px;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: #2b2b2b;
-  border-top: 1px solid #2f2f2f;
 }
 .ws-term-head {
   display: flex;

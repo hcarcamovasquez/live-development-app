@@ -10,6 +10,13 @@ import '../ide.css'
 type FileState = { content: string; dirty: boolean }
 const DEFAULT_FILE = 'src/UserApp.tsx'
 
+const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max)
+const loadSize = (key: string, fallback: number) => {
+  const v = Number(localStorage.getItem(`ide.${key}`))
+  return Number.isFinite(v) && v > 0 ? v : fallback
+}
+const saveSize = (key: string, v: number) => localStorage.setItem(`ide.${key}`, String(v))
+
 export function EditorView({ project, onBack }: { project: string; onBack: () => void }) {
   const [tree, setTree] = useState<TreeNode[]>([])
   const [active, setActive] = useState('')
@@ -22,6 +29,47 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
   const [delFile, setDelFile] = useState<string | null>(null)
   const [showTerminal, setShowTerminal] = useState(false)
   const [terminalPort, setTerminalPort] = useState(0)
+
+  // Tamaños de paneles (redimensionables, persistidos en localStorage).
+  const [explorerW, setExplorerW] = useState(() => loadSize('explorerW', 250))
+  const [previewW, setPreviewW] = useState(() =>
+    loadSize('previewW', Math.round(window.innerWidth * 0.4)),
+  )
+  const [termH, setTermH] = useState(() => loadSize('termH', 260))
+  const [dragKind, setDragKind] = useState<'col' | 'row' | null>(null)
+
+  useEffect(() => saveSize('explorerW', explorerW), [explorerW])
+  useEffect(() => saveSize('previewW', previewW), [previewW])
+  useEffect(() => saveSize('termH', termH), [termH])
+
+  // Inicia el arrastre de un divisor. El "shield" evita que el iframe del
+  // preview capture los eventos mientras se arrastra.
+  const startDrag = (kind: 'explorer' | 'preview' | 'term') => (e: React.PointerEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startY = e.clientY
+    const startExplorer = explorerW
+    const startPreview = previewW
+    const startTerm = termH
+    setDragKind(kind === 'term' ? 'row' : 'col')
+
+    const onMove = (ev: PointerEvent) => {
+      if (kind === 'explorer') {
+        setExplorerW(clamp(startExplorer + (ev.clientX - startX), 160, 520))
+      } else if (kind === 'preview') {
+        setPreviewW(clamp(startPreview - (ev.clientX - startX), 260, window.innerWidth - 460))
+      } else {
+        setTermH(clamp(startTerm - (ev.clientY - startY), 120, window.innerHeight - 220))
+      }
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      setDragKind(null)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
 
   const filesRef = useRef(files)
   filesRef.current = files
@@ -152,8 +200,11 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
         </button>
       </div>
 
-      {/* Cuerpo: Project | Editor | Preview */}
-      <div className="ws-body">
+      {/* Cuerpo: Project | Editor | Preview (con divisores redimensionables) */}
+      <div
+        className="ws-body"
+        style={{ gridTemplateColumns: `${explorerW}px 5px minmax(0, 1fr) 5px ${previewW}px` }}
+      >
         <FileExplorer
           project={project}
           tree={tree}
@@ -163,6 +214,8 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
           onNewFile={newFile}
           onDeleteFile={setDelFile}
         />
+
+        <div className="ws-split-v" onPointerDown={startDrag('explorer')} />
 
         <div className="ws-editor-area">
           <div className="ws-tabs">
@@ -235,15 +288,28 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
           </div>
         </div>
 
+        <div className="ws-split-v" onPointerDown={startDrag('preview')} />
+
         <Preview url={previewUrl} nonce={previewNonce} onReload={() => setPreviewNonce((n) => n + 1)} />
       </div>
 
-      {/* Terminal integrada (PTY del proyecto) */}
+      {/* Terminal integrada (PTY del proyecto), redimensionable en alto */}
       {showTerminal && terminalPort > 0 && (
-        <TerminalDock
-          project={project}
-          terminalPort={terminalPort}
-          onClose={() => setShowTerminal(false)}
+        <div className="ws-terminal-wrap" style={{ height: termH }}>
+          <div className="ws-split-h" onPointerDown={startDrag('term')} />
+          <TerminalDock
+            project={project}
+            terminalPort={terminalPort}
+            onClose={() => setShowTerminal(false)}
+          />
+        </div>
+      )}
+
+      {/* Shield: mantiene los eventos de arrastre fuera del iframe */}
+      {dragKind && (
+        <div
+          className="ws-drag-shield"
+          style={{ cursor: dragKind === 'row' ? 'row-resize' : 'col-resize' }}
         />
       )}
 
