@@ -17,6 +17,31 @@ const loadSize = (key: string, fallback: number) => {
 }
 const saveSize = (key: string, v: number) => localStorage.setItem(`ide.${key}`, String(v))
 
+// Sesión por proyecto: pestañas abiertas, archivo activo y estado de la terminal.
+type Session = { tabs: string[]; active: string; terminal: boolean }
+const loadSession = (project: string): Session | null => {
+  try {
+    return JSON.parse(localStorage.getItem(`ide.session.${project}`) ?? 'null')
+  } catch {
+    return null
+  }
+}
+const saveSession = (project: string, s: Session) =>
+  localStorage.setItem(`ide.session.${project}`, JSON.stringify(s))
+
+// Aplana el árbol a un set de rutas de archivo (para validar pestañas guardadas).
+function flattenFiles(nodes: TreeNode[]): Set<string> {
+  const out = new Set<string>()
+  const walk = (ns: TreeNode[]) => {
+    for (const n of ns) {
+      if (n.type === 'file') out.add(n.path)
+      else if (n.children) walk(n.children)
+    }
+  }
+  walk(nodes)
+  return out
+}
+
 export function EditorView({ project, onBack }: { project: string; onBack: () => void }) {
   const [tree, setTree] = useState<TreeNode[]>([])
   const [active, setActive] = useState('')
@@ -75,14 +100,20 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
   filesRef.current = files
   const activeRef = useRef(active)
   activeRef.current = active
+  // Evita guardar la sesión antes de haberla restaurado (no pisar con vacío).
+  const restoredRef = useRef(false)
 
   const q = `?project=${encodeURIComponent(project)}`
 
   const loadTree = useCallback(
-    () =>
+    (): Promise<TreeNode[]> =>
       fetch(`/api/tree${q}`)
         .then((r) => r.json())
-        .then((d) => setTree(d.tree ?? [])),
+        .then((d) => {
+          const nodes: TreeNode[] = d.tree ?? []
+          setTree(nodes)
+          return nodes
+        }),
     [q],
   )
 
@@ -103,6 +134,7 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
 
   useEffect(() => {
     let cancelled = false
+    restoredRef.current = false
     fetch(`/api/projects/${encodeURIComponent(project)}/open`, { method: 'POST' })
       .then((r) => r.json())
       .then((d) => !cancelled && setPreviewUrl(d.url ?? ''))
@@ -111,14 +143,35 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
       .then((r) => r.json())
       .then((d) => !cancelled && setTerminalPort(d.terminalPort ?? 0))
       .catch(() => {})
-    loadTree().then(() => {
-      if (!cancelled) openFile(DEFAULT_FILE)
+
+    loadTree().then((nodes) => {
+      if (cancelled) return
+      // Restaura la sesión guardada, validando que los archivos sigan existiendo.
+      const existing = flattenFiles(nodes)
+      const session = loadSession(project)
+      const validTabs = (session?.tabs ?? []).filter((p) => existing.has(p))
+      if (validTabs.length) {
+        setTabs(validTabs)
+        setShowTerminal(!!session?.terminal)
+        const act =
+          session?.active && validTabs.includes(session.active) ? session.active : validTabs[0]
+        openFile(act)
+      } else {
+        openFile(DEFAULT_FILE)
+      }
+      restoredRef.current = true
     })
     return () => {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project])
+
+  // Persiste la sesión (pestañas/activo/terminal) cuando cambia, ya restaurada.
+  useEffect(() => {
+    if (!restoredRef.current) return
+    saveSession(project, { tabs, active, terminal: showTerminal })
+  }, [project, tabs, active, showTerminal])
 
   const save = useCallback(async () => {
     const path = activeRef.current
