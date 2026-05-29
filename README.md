@@ -36,6 +36,10 @@ API. El registro de proyectos se guarda en **SQLite** del lado del servidor.
   **del proyecto** hace HMR → el iframe se actualiza sin recargar el editor.
 - **Gestionar**: cada tarjeta del listado permite **abrir** o **borrar** el proyecto
   (con confirmación; el borrado elimina dev server + carpeta + registro).
+- **Git integrado**: cada proyecto se crea como repo (`git init` + commit inicial) y
+  con `simple-git` en devDependencies. El IDE incluye un panel **Source Control**
+  (rama, lista de cambios, diff HEAD↔working con Monaco, y commit), conmutable con
+  la barra de actividad junto al explorador.
 - **Terminal integrada** (abajo, estilo WebStorm/VS Code): **PTYs reales**
   (`node-pty`) ancladas al directorio del proyecto, vía WebSocket + **xterm.js**.
   Permite recorrer el filesystem y ejecutar comandos (`ls`, `git`, `npm`, …), con
@@ -103,6 +107,9 @@ y edita `src/UserApp.tsx`: el preview se actualiza en caliente.
 | GET    | `/api/file?project=&path=`    | Lee un archivo                           |
 | POST   | `/api/file`                   | Escribe `{ project, path, content }` (crea si no existe) |
 | DELETE | `/api/file?project=&path=`    | Borra un archivo                         |
+| GET    | `/api/git/status?project=`    | Rama + archivos cambiados                 |
+| GET    | `/api/git/diff?project=&path=`| Contenido HEAD vs working (para el diff)  |
+| POST   | `/api/git/commit`             | Commitea `{ project, message }`           |
 
 Las rutas de archivo se resuelven **dentro** del proyecto; se rechaza el path
 traversal (`../`).

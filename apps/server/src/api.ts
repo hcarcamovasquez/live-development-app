@@ -11,6 +11,7 @@ import {
   projectPath,
 } from './projects.js'
 import { getProjectRow } from './db.js'
+import { statusOf, showHead, commitAll } from './git.js'
 
 type TreeNode = { name: string; path: string; type: 'file' | 'dir'; children?: TreeNode[] }
 const IGNORE = new Set(['node_modules', 'dist', '.git', '.DS_Store'])
@@ -156,6 +157,53 @@ api.delete('/file', async (c) => {
     return c.json({ ok: true })
   } catch (err) {
     return c.json({ error: String(err) }, 400)
+  }
+})
+
+// ── Git ───────────────────────────────────────────────────────────────────────
+api.get('/git/status', async (c) => {
+  const project = c.req.query('project')
+  if (!project) return c.json({ error: 'falta ?project' }, 400)
+  try {
+    const s = slug(project)
+    if (!getProjectRow(s)) throw new Error('Proyecto no encontrado')
+    return c.json(await statusOf(s))
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 400)
+  }
+})
+
+// Diff de un archivo: contenido en HEAD vs working (para Monaco DiffEditor).
+api.get('/git/diff', async (c) => {
+  const project = c.req.query('project')
+  const path = c.req.query('path')
+  if (!project || !path) return c.json({ error: 'faltan ?project y ?path' }, 400)
+  try {
+    const s = slug(project)
+    if (!getProjectRow(s)) throw new Error('Proyecto no encontrado')
+    const original = await showHead(s, path)
+    let modified = ''
+    try {
+      modified = await readFile(safeResolve(project, path), 'utf8')
+    } catch {
+      modified = '' // archivo borrado
+    }
+    return c.json({ path, original, modified })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 400)
+  }
+})
+
+api.post('/git/commit', async (c) => {
+  const { project, message } = await c.req.json<{ project?: string; message?: string }>()
+  if (!project || !message?.trim()) return c.json({ error: 'se requiere { project, message }' }, 400)
+  try {
+    const s = slug(project)
+    if (!getProjectRow(s)) throw new Error('Proyecto no encontrado')
+    return c.json(await commitAll(s, message))
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return c.json({ error: /nothing to commit/.test(msg) ? 'No hay cambios para commitear' : msg }, 400)
   }
 })
 

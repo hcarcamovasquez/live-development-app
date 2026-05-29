@@ -2,10 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Editor } from './Editor'
 import { Preview } from './Preview'
 import { FileExplorer, type TreeNode } from './FileExplorer'
+import { GitPanel } from './GitPanel'
+import { DiffView } from './DiffView'
 import { ConfirmModal } from './ConfirmModal'
 import { TerminalDock } from './TerminalPanel'
 import { fileMeta, langOf } from './fileMeta'
 import '../ide.css'
+
+type Diff = { path: string; original: string; modified: string }
 
 type FileState = { content: string; dirty: boolean }
 const DEFAULT_FILE = 'src/UserApp.tsx'
@@ -54,6 +58,15 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
   const [delFile, setDelFile] = useState<string | null>(null)
   const [showTerminal, setShowTerminal] = useState(false)
   const [terminalPort, setTerminalPort] = useState(0)
+  const [leftView, setLeftView] = useState<'files' | 'git'>('files')
+  const [diff, setDiff] = useState<Diff | null>(null)
+
+  const openDiff = (path: string) => {
+    fetch(`/api/git/diff${q}&path=${encodeURIComponent(path)}`)
+      .then((r) => r.json())
+      .then((d) => setDiff({ path, original: d.original ?? '', modified: d.modified ?? '' }))
+      .catch(() => {})
+  }
 
   // Tamaños de paneles (redimensionables, persistidos en localStorage).
   const [explorerW, setExplorerW] = useState(() => loadSize('explorerW', 250))
@@ -256,21 +269,53 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
       {/* Cuerpo: Project | Editor | Preview (con divisores redimensionables) */}
       <div
         className="ws-body"
-        style={{ gridTemplateColumns: `${explorerW}px 5px minmax(0, 1fr) 5px ${previewW}px` }}
+        style={{
+          gridTemplateColumns: `46px ${explorerW}px 5px minmax(0, 1fr) 5px ${previewW}px`,
+        }}
       >
-        <FileExplorer
-          project={project}
-          tree={tree}
-          active={active}
-          dirtyPaths={dirtyPaths}
-          onOpen={openFile}
-          onNewFile={newFile}
-          onDeleteFile={setDelFile}
-        />
+        <div className="ws-rail">
+          <button
+            className={`ws-rail-btn ${leftView === 'files' ? 'on' : ''}`}
+            title="Project"
+            onClick={() => setLeftView('files')}
+          >
+            ▤
+          </button>
+          <button
+            className={`ws-rail-btn ${leftView === 'git' ? 'on' : ''}`}
+            title="Source Control"
+            onClick={() => setLeftView('git')}
+          >
+            ⎇
+          </button>
+        </div>
+
+        {leftView === 'files' ? (
+          <FileExplorer
+            project={project}
+            tree={tree}
+            active={active}
+            dirtyPaths={dirtyPaths}
+            onOpen={openFile}
+            onNewFile={newFile}
+            onDeleteFile={setDelFile}
+          />
+        ) : (
+          <GitPanel project={project} activePath={diff?.path ?? ''} onOpenDiff={openDiff} />
+        )}
 
         <div className="ws-split-v" onPointerDown={startDrag('explorer')} />
 
         <div className="ws-editor-area">
+          {diff ? (
+            <DiffView
+              path={diff.path}
+              original={diff.original}
+              modified={diff.modified}
+              onClose={() => setDiff(null)}
+            />
+          ) : (
+            <>
           <div className="ws-tabs">
             {tabs.map((path) => {
               const meta = fileMeta(path)
@@ -339,6 +384,8 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
               <div className="ws-no-file">Selecciona un archivo en el panel Project.</div>
             )}
           </div>
+            </>
+          )}
         </div>
 
         <div className="ws-split-v" onPointerDown={startDrag('preview')} />

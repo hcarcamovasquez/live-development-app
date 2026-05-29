@@ -156,6 +156,200 @@
   z-index: 40;
 }
 
+/* ---------- Barra de actividad (Files / Git) ---------- */
+.ws-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 8px;
+  background: var(--panel-2);
+  border-right: 1px solid #2f2f2f;
+}
+.ws-rail-btn {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: none;
+  color: #8a8a8a;
+  font-size: 17px;
+  border-radius: 7px;
+  border-left: 2px solid transparent;
+}
+.ws-rail-btn:hover {
+  color: #e0e0e0;
+  background: rgba(255, 255, 255, 0.06);
+}
+.ws-rail-btn.on {
+  color: #e6e6e6;
+  background: rgba(74, 136, 199, 0.16);
+}
+
+/* ---------- Source Control (git) ---------- */
+.ws-git {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel);
+  border-right: 1px solid #2f2f2f;
+  overflow: hidden;
+}
+.ws-git-branch {
+  color: var(--green);
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 6px;
+  font-size: 10.5px;
+}
+.ws-git-commit {
+  padding: 10px;
+  border-bottom: 1px solid #2f2f2f;
+}
+.ws-git-msg {
+  width: 100%;
+  resize: vertical;
+  background: var(--editor);
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  padding: 7px 9px;
+  color: var(--txt-2);
+  font-family: system-ui, sans-serif;
+  font-size: 12.5px;
+  outline: none;
+}
+.ws-git-msg:focus {
+  border-color: var(--blue);
+}
+.ws-git-commit-btn {
+  width: 100%;
+  margin-top: 8px;
+  background: var(--green);
+  color: #0d1f12;
+  border: none;
+  border-radius: 6px;
+  padding: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.ws-git-commit-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.ws-git-commit-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ws-git-note {
+  margin-top: 7px;
+  font-size: 11px;
+  color: var(--green);
+}
+.ws-git-section {
+  padding: 8px 12px 4px;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8a8a8a;
+}
+.ws-git-list {
+  flex: 1;
+  overflow: auto;
+}
+.ws-git-empty {
+  padding: 12px;
+  font-size: 12px;
+  color: #6a6a6a;
+}
+.ws-git-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--txt);
+}
+.ws-git-row:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+.ws-git-row.active {
+  background: var(--sel);
+  color: #fff;
+}
+.ws-git-name {
+  flex: none;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-git-dir {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--faint, #6a6a6a);
+  font-size: 11px;
+}
+.ws-git-badge {
+  flex: none;
+  width: 16px;
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+}
+.ws-git-badge[data-st='M'] {
+  color: #d6a85f;
+}
+.ws-git-badge[data-st='A'],
+.ws-git-badge[data-st='U'] {
+  color: #6a9955;
+}
+.ws-git-badge[data-st='D'] {
+  color: #d16969;
+}
+.ws-git-badge[data-st='R'] {
+  color: #5394ec;
+}
+
+/* ---------- Vista de diff ---------- */
+.ws-diff {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.ws-diff-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 31px;
+  padding: 0 12px;
+  background: var(--panel);
+  border-bottom: 1px solid #2f2f2f;
+  font-size: 12.5px;
+}
+.ws-diff-icon {
+  color: #d6a85f;
+  font-weight: 700;
+}
+.ws-diff-title {
+  color: #e0e0e0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+.ws-diff-sub {
+  color: var(--dim);
+  font-size: 11px;
+}
+.ws-diff-body {
+  flex: 1;
+  min-height: 0;
+}
+
 /* ---------- Tool window: Project ---------- */
 .ws-explorer {
   display: flex;

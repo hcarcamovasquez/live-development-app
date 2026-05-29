@@ -4,6 +4,7 @@ import { createServer as netCreateServer } from 'node:net'
 import { join, dirname } from 'node:path'
 import { projectsDir, previewPortBase } from './paths.js'
 import { listProjectRows, getProjectRow, insertProjectRow, deleteProjectRow } from './db.js'
+import { initRepo } from './git.js'
 
 /**
  * Gestiona MÚLTIPLES proyectos. Cada proyecto es una app Vite COMPLETA e
@@ -36,11 +37,20 @@ function template(name: string): Record<string, string> {
         type: 'module',
         scripts: { dev: 'vite', build: 'vite build', preview: 'vite preview' },
         dependencies: { react: '^19.2.6', 'react-dom': '^19.2.6' },
-        devDependencies: { '@vitejs/plugin-react': '^6.0.1', vite: '^8.0.12' },
+        devDependencies: {
+          '@vitejs/plugin-react': '^6.0.1',
+          'simple-git': '^3.27.0',
+          vite: '^8.0.12',
+        },
       },
       null,
       2,
     ),
+    '.gitignore': `node_modules
+dist
+*.local
+.DS_Store
+`,
     'vite.config.js': `import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -152,6 +162,7 @@ export async function createProject(name: string): Promise<ProjectInfo> {
     await writeFile(abs, content, 'utf8')
   }
   await run('pnpm', ['install', '--ignore-workspace'], dir)
+  await initRepo(s, name) // git init + commit inicial (node_modules ya ignorado)
 
   const row = insertProjectRow(name, s)
   return { name: row.name, slug: row.slug, createdAt: row.created_at, running: false, url: null }

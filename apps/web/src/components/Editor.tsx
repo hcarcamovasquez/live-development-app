@@ -11,7 +11,7 @@ type Props = {
 }
 
 // Tema Darcula (aprox. al de JetBrains/WebStorm).
-function defineDarcula(monaco: Monaco) {
+export function defineDarcula(monaco: Monaco) {
   monaco.editor.defineTheme('darcula', {
     base: 'vs-dark',
     inherit: true,
