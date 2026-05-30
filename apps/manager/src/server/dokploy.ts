@@ -87,8 +87,8 @@ export async function createAndDeploy(name: string, slug: string): Promise<Creat
   const env = [
     'NODE_ENV=production',
     `PORT=${config.editorPort}`,
-    'PROJECTS_DIR=/data/projects',
-    'DB_PATH=/data/registry.db',
+    'PROJECTS_DIR=/home/node/projects',
+    'DB_PATH=/home/node/projects/registry.db',
     `WORKSPACE_ID=${slug}`,
   ].join('\n')
   await post('application.saveEnvironment', {
@@ -99,12 +99,12 @@ export async function createAndDeploy(name: string, slug: string): Promise<Creat
     createEnvFile: false,
   })
 
-  // 5) Volumen persistente montado en /data (proyectos + SQLite del workspace).
-  //    required: type, mountPath, serviceId
+  // 5) Volumen persistente con los proyectos + SQLite del workspace, montado bajo
+  //    el home del usuario `node`. required: type, mountPath, serviceId
   await post('mounts.create', {
     type: 'volume',
     volumeName: `ws-${slug}-data`,
-    mountPath: '/data',
+    mountPath: '/home/node/projects',
     serviceType: 'application',
     serviceId: applicationId,
   })

@@ -41,16 +41,17 @@ RUN chmod +x scripts/docker-entrypoint.sh
 
 ENV NODE_ENV=production \
     PORT=3000 \
-    PROJECTS_DIR=/data/projects \
-    DB_PATH=/data/registry.db \
+    PROJECTS_DIR=/home/node/projects \
+    DB_PATH=/home/node/projects/registry.db \
     NODE_OPTIONS=--disable-warning=ExperimentalWarning \
     PREVIEW_HMR_CLIENT_PORT=443 \
     PREVIEW_HMR_PROTOCOL=wss \
     HOME=/home/node \
     SHELL=/bin/bash
 
-# Persistencia de los proyectos del workspace (Dokploy monta un volumen aquí).
-VOLUME /data
+# Persistencia de los proyectos del workspace, bajo el home del usuario `node`
+# (Dokploy monta el volumen aquí). La terminal abre dentro de este árbol.
+VOLUME /home/node/projects
 EXPOSE 3000
 # El entrypoint (root) prepara /data y hace exec gosu node → todo corre como `node`.
 ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]

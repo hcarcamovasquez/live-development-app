@@ -6,8 +6,8 @@ set -e
 # (uid 1000, ya existe en la imagen base node). Así el server y las terminales
 # corren NO-root y comparten dueño de archivos.
 
-DATA_DIR="/data"
-mkdir -p "${PROJECTS_DIR:-/data/projects}"
+DATA_DIR="${PROJECTS_DIR:-/home/node/projects}"
+mkdir -p "$DATA_DIR"
 
 # chown una sola vez (en el primer arranque / si el volumen se reinició). Evita
 # recorrer node_modules enormes en cada boot.

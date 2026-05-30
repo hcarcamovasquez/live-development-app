@@ -17,7 +17,8 @@ del editor** vía la **API de Dokploy** (construido desde este repo con `Dockerf
 
 - **Editor** (`Dockerfile`, raíz): imagen de un workspace; un solo puerto
   (`PORT`, 3000) — terminal por `/ws/terminal` y preview por `/preview/<slug>/`
-  (proxy mismo origen). Volumen `/data` (proyectos + SQLite). Requiere Node 24.
+  (proxy mismo origen). Corre como usuario no-root `node`; volumen persistente en
+  `/home/node/projects` (proyectos + SQLite). Requiere Node 24.
 - **Manager** (`apps/manager/Dockerfile` + `docker-compose.yml`): se sube a Dokploy
   como Compose. Crea cada workspace con `application.create` → `saveGitProvider`
   (este repo) → `saveBuildType` (dockerfile) → `saveEnvironment` → `domain.create`
@@ -122,7 +123,7 @@ y edita `src/UserApp.tsx`: el preview se actualiza en caliente.
 | Variable            | Por defecto                                  | Descripción                        |
 | ------------------- | -------------------------------------------- | ---------------------------------- |
 | `PORT`              | `3000`                                       | Puerto del editor                  |
-| `PROJECTS_DIR`      | `~/.live-development-app/projects`           | Dónde se persisten los proyectos   |
+| `PROJECTS_DIR`      | `~/.live-development-app/projects` (local) · `/home/node/projects` (contenedor) | Dónde se persisten los proyectos   |
 | `PREVIEW_PORT_BASE` | `5174`                                       | Puerto base de los dev servers     |
 | `DB_PATH`           | `$PROJECTS_DIR/registry.db`                  | Ruta de la base SQLite             |
 
