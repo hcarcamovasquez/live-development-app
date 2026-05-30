@@ -279,17 +279,12 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
         <span className="ws-dim">live·dev</span>
         <span className="ws-spacer" />
         <button
-          className={`ws-run ghost ${showPreview ? 'on' : ''}`}
+          className={`ws-toolbtn ${showPreview ? 'on' : ''}`}
           onClick={() => setShowPreview((v) => !v)}
           title={showPreview ? 'Ocultar preview' : 'Mostrar preview'}
         >
-          <span className="ws-eye" /> {showPreview ? 'Ocultar' : 'Preview'}
+          <span className="ws-eye" />
         </button>
-        {showPreview && (
-          <button className="ws-run" onClick={() => setPreviewNonce((n) => n + 1)} title="Recargar preview">
-            <span className="ws-play" /> Recargar
-          </button>
-        )}
       </div>
 
       {/* Cuerpo: Project | Editor | Preview (con divisores redimensionables) */}
@@ -461,14 +456,6 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
           title="Terminal (abajo)"
         >
           <span className="ws-term-icon">›_</span> Terminal
-        </button>
-        <span className="ws-status-divider" />
-        <button
-          className={`ws-tool-toggle ${showPreview ? 'on' : ''}`}
-          onClick={() => setShowPreview((v) => !v)}
-          title="Preview (derecha)"
-        >
-          <span className="ws-eye" /> Preview
         </button>
         {showPreview && (
           <>
