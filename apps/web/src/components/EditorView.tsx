@@ -14,6 +14,25 @@ type Diff = { path: string; original: string; modified: string }
 type FileState = { content: string; dirty: boolean }
 const DEFAULT_FILE = 'src/UserApp.tsx'
 
+function FullscreenIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d={
+          active
+            ? 'M6 2v4H2 M14 6h-4V2 M10 14v-4h4 M2 10h4v4'
+            : 'M2 6V2h4 M10 2h4v4 M14 10v4h-4 M6 14H2v-4'
+        }
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max)
 const loadSize = (key: string, fallback: number) => {
   const v = Number(localStorage.getItem(`ide.${key}`))
@@ -61,10 +80,22 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
   const [leftView, setLeftView] = useState<'files' | 'git'>('files')
   const [diff, setDiff] = useState<Diff | null>(null)
   const [showPreview, setShowPreview] = useState(() => localStorage.getItem('ide.showPreview') !== '0')
+  const [fullscreen, setFullscreen] = useState(false)
 
   useEffect(() => {
     localStorage.setItem('ide.showPreview', showPreview ? '1' : '0')
   }, [showPreview])
+
+  useEffect(() => {
+    const onFs = () => setFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onFs)
+    return () => document.removeEventListener('fullscreenchange', onFs)
+  }, [])
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen()
+    else document.documentElement.requestFullscreen?.()
+  }
 
   const openDiff = (path: string) => {
     fetch(`/api/git/diff${q}&path=${encodeURIComponent(path)}`)
@@ -284,6 +315,13 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
           title={showPreview ? 'Ocultar preview' : 'Mostrar preview'}
         >
           <span className="ws-eye" />
+        </button>
+        <button
+          className="ws-toolbtn"
+          onClick={toggleFullscreen}
+          title={fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+        >
+          <FullscreenIcon active={fullscreen} />
         </button>
       </div>
 
