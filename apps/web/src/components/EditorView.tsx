@@ -5,7 +5,7 @@ import { FileExplorer } from './FileExplorer'
 import { GitPanel } from './GitPanel'
 import { DiffView } from './DiffView'
 import { ConfirmModal } from './ConfirmModal'
-import { TerminalDock } from './TerminalPanel'
+import { TerminalDock, AppTerminal } from './TerminalPanel'
 import { fileMeta, langOf } from './fileMeta'
 import '../ide.css'
 
@@ -63,7 +63,10 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
   const [cursor, setCursor] = useState({ line: 1, col: 1 })
   const [saveFlash, setSaveFlash] = useState(false)
   const [delFile, setDelFile] = useState<string | null>(null)
-  const [showTerminal, setShowTerminal] = useState(true)
+  // Panel inferior: 'app' (terminal aislada del dev server) | 'terminal' (shells) | 'none'.
+  const [dock, setDock] = useState<'none' | 'terminal' | 'app'>('app')
+  const toggleDock = (which: 'terminal' | 'app') =>
+    setDock((d) => (d === which ? 'none' : which))
   const [terminalPort, setTerminalPort] = useState(0)
   const [leftView, setLeftView] = useState<'files' | 'git'>('files')
   const [leftOpen, setLeftOpen] = useState(() => localStorage.getItem('ide.leftOpen') !== '0')
@@ -499,17 +502,25 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
       </div>
 
       {/* Terminal integrada (PTY del proyecto), redimensionable en alto */}
-      {showTerminal && terminalPort > 0 && (
+      {dock !== 'none' && terminalPort > 0 && (
         <div className="ws-terminal-wrap" style={{ height: termH }}>
           <div className="ws-split-h" onPointerDown={startDrag('term')} />
-          <TerminalDock
-            project={project}
-            terminalPort={terminalPort}
-            appStatus={appStatus}
-            onRun={runApp}
-            onStop={stopApp}
-            onClose={() => setShowTerminal(false)}
-          />
+          {dock === 'app' ? (
+            <AppTerminal
+              project={project}
+              terminalPort={terminalPort}
+              appStatus={appStatus}
+              onRun={runApp}
+              onStop={stopApp}
+              onClose={() => setDock('none')}
+            />
+          ) : (
+            <TerminalDock
+              project={project}
+              terminalPort={terminalPort}
+              onClose={() => setDock('none')}
+            />
+          )}
         </div>
       )}
 
@@ -524,11 +535,19 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
       {/* Status bar inferior (con el stripe de tool windows) */}
       <div className="ws-statusbar">
         <button
-          className={`ws-tool-toggle ${showTerminal ? 'on' : ''}`}
-          onClick={() => setShowTerminal((v) => !v)}
-          title="Terminal (abajo)"
+          className={`ws-tool-toggle ${dock === 'terminal' ? 'on' : ''}`}
+          onClick={() => toggleDock('terminal')}
+          title="Terminal (shells)"
         >
           <span className="ws-term-icon">›_</span> Terminal
+        </button>
+        <span className="ws-status-divider" />
+        <button
+          className={`ws-tool-toggle ${dock === 'app' ? 'on' : ''}`}
+          onClick={() => toggleDock('app')}
+          title="App (iniciar/detener el dev server)"
+        >
+          <span className={`ws-app-dot ${appStatus}`} /> App
         </button>
         {showPreview && (
           <>

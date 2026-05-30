@@ -3,29 +3,6 @@ import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 
-/**
- * Panel inferior con dos pestañas al estilo VS Code: "App" y "Terminal".
- *  - App: salida del dev server (install + vite), controlada con Run/Stop. No PTY.
- *  - Terminal: una o más shells (PTY) persistentes, con sub-pestañas y "+".
- */
-type Panel = 'app' | 'terminal'
-type DockState = { panel: Panel; ids: number[]; active: number; counter: number }
-
-function loadDock(project: string): DockState {
-  try {
-    const s = JSON.parse(localStorage.getItem(`ide.dock.${project}`) ?? 'null')
-    if (s && Array.isArray(s.ids)) {
-      return { panel: s.panel ?? 'app', ids: s.ids, active: s.active ?? 0, counter: s.counter ?? 0 }
-    }
-  } catch {
-    /* noop */
-  }
-  return { panel: 'app', ids: [], active: 0, counter: 0 }
-}
-function saveDock(project: string, s: DockState) {
-  localStorage.setItem(`ide.dock.${project}`, JSON.stringify(s))
-}
-
 const STATUS_LABEL: Record<string, string> = {
   idle: 'detenida',
   installing: 'instalando…',
@@ -34,7 +11,11 @@ const STATUS_LABEL: Record<string, string> = {
   error: 'error',
 }
 
-export function TerminalDock({
+/**
+ * Terminal AISLADA de la app: una sola sesión (output del dev server), con
+ * controles Run/Stop. No permite abrir más pestañas: es solo para iniciar la app.
+ */
+export function AppTerminal({
   project,
   terminalPort,
   appStatus,
@@ -49,112 +30,125 @@ export function TerminalDock({
   onStop: () => void
   onClose: () => void
 }) {
-  const [st, setSt] = useState<DockState>(() => loadDock(project))
-  const { panel, ids: terms, active } = st
+  const busy = appStatus === 'running' || appStatus === 'starting' || appStatus === 'installing'
+  return (
+    <div className="ws-terminal">
+      <div className="ws-term-head">
+        <span className="ws-term-fixed">
+          <span className={`ws-app-dot ${appStatus}`} /> App
+        </span>
+        <span className="ws-head-sep" />
+        <div className="ws-app-controls">
+          {busy ? (
+            <button className="ws-app-stop" onClick={onStop} title="Detener app">
+              ■ Stop
+            </button>
+          ) : (
+            <button className="ws-app-run" onClick={onRun} title="Instalar y arrancar app">
+              ▶ Run
+            </button>
+          )}
+          <span className="ws-app-status">{STATUS_LABEL[appStatus] ?? appStatus}</span>
+        </div>
+        <span className="ws-spacer" />
+        <button className="ws-icon-btn" title="Ocultar" onClick={onClose}>
+          ✕
+        </button>
+      </div>
+      <div className="ws-term-bodies">
+        <Term wsId="__app__" numId={-1} project={project} terminalPort={terminalPort} readOnly />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Dock de terminales (shells PTY). Permite varias sesiones en pestañas y "+".
+ */
+type TermsState = { ids: number[]; active: number; counter: number }
+function loadTerms(project: string): TermsState {
+  try {
+    const s = JSON.parse(localStorage.getItem(`ide.terms.${project}`) ?? 'null')
+    if (s && Array.isArray(s.ids) && s.ids.length) return s
+  } catch {
+    /* noop */
+  }
+  return { ids: [1], active: 1, counter: 1 }
+}
+function saveTerms(project: string, s: TermsState) {
+  localStorage.setItem(`ide.terms.${project}`, JSON.stringify(s))
+}
+
+export function TerminalDock({
+  project,
+  terminalPort,
+  onClose,
+}: {
+  project: string
+  terminalPort: number
+  onClose: () => void
+}) {
+  const [state, setState] = useState<TermsState>(() => loadTerms(project))
+  const { ids: terms, active } = state
   const killSet = useRef<Set<number>>(new Set())
 
-  useEffect(() => saveDock(project, st), [project, st])
+  useEffect(() => saveTerms(project, state), [project, state])
 
-  const showApp = () => setSt((s) => ({ ...s, panel: 'app' }))
-  const showTerminal = () =>
-    setSt((s) =>
-      s.ids.length === 0
-        ? { ...s, panel: 'terminal', ids: [s.counter + 1], active: s.counter + 1, counter: s.counter + 1 }
-        : { ...s, panel: 'terminal' },
-    )
-  const setActive = (id: number) => setSt((s) => ({ ...s, active: id }))
+  const setActive = (id: number) => setState((s) => ({ ...s, active: id }))
   const addTerm = () =>
-    setSt((s) => {
+    setState((s) => {
       const id = s.counter + 1
-      return { ...s, panel: 'terminal', ids: [...s.ids, id], active: id, counter: id }
+      return { ids: [...s.ids, id], active: id, counter: id }
     })
   const closeTerm = (id: number) => {
     killSet.current.add(id)
-    setSt((s) => {
+    setState((s) => {
       const ids = s.ids.filter((t) => t !== id)
-      return { ...s, ids, active: id === s.active ? (ids[ids.length - 1] ?? 0) : s.active }
+      if (ids.length === 0) {
+        onClose()
+        return s
+      }
+      return { ...s, ids, active: id === s.active ? ids[ids.length - 1] : s.active }
     })
   }
-
-  const busy = appStatus === 'running' || appStatus === 'starting' || appStatus === 'installing'
 
   return (
     <div className="ws-terminal">
       <div className="ws-term-head">
-        {/* Pestañas del panel: App | Terminal */}
-        <div className="ws-panel-tabs">
-          <button className={`ws-panel-tab ${panel === 'app' ? 'active' : ''}`} onClick={showApp}>
-            <span className={`ws-app-dot ${appStatus}`} /> App
-          </button>
-          <button
-            className={`ws-panel-tab ${panel === 'terminal' ? 'active' : ''}`}
-            onClick={showTerminal}
-          >
-            <span className="ws-term-icon">›_</span> Terminal
+        <span className="ws-term-fixed">
+          <span className="ws-term-icon">›_</span> Terminal
+        </span>
+        <span className="ws-head-sep" />
+        <div className="ws-term-tabs">
+          {terms.map((id, i) => (
+            <button
+              key={id}
+              className={`ws-term-tab ${id === active ? 'active' : ''}`}
+              onClick={() => setActive(id)}
+            >
+              Local{i > 0 ? ` (${i + 1})` : ''}
+              <span
+                className="ws-term-tab-close"
+                title="Cerrar sesión"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  closeTerm(id)
+                }}
+              >
+                ✕
+              </span>
+            </button>
+          ))}
+          <button className="ws-term-add" title="Nueva terminal" onClick={addTerm}>
+            +
           </button>
         </div>
-
-        <span className="ws-head-sep" />
-
-        {panel === 'app' ? (
-          <div className="ws-app-controls">
-            {busy ? (
-              <button className="ws-app-stop" onClick={onStop} title="Detener app">
-                ■ Stop
-              </button>
-            ) : (
-              <button className="ws-app-run" onClick={onRun} title="Instalar y arrancar app">
-                ▶ Run
-              </button>
-            )}
-            <span className="ws-app-status">{STATUS_LABEL[appStatus] ?? appStatus}</span>
-          </div>
-        ) : (
-          <div className="ws-term-tabs">
-            {terms.map((id, i) => (
-              <button
-                key={id}
-                className={`ws-term-tab ${id === active ? 'active' : ''}`}
-                onClick={() => setActive(id)}
-              >
-                Local{i > 0 ? ` (${i + 1})` : ''}
-                <span
-                  className="ws-term-tab-close"
-                  title="Cerrar sesión"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    closeTerm(id)
-                  }}
-                >
-                  ✕
-                </span>
-              </button>
-            ))}
-            <button className="ws-term-add" title="Nueva terminal" onClick={addTerm}>
-              +
-            </button>
-          </div>
-        )}
-
         <span className="ws-spacer" />
-        <button className="ws-icon-btn" title="Ocultar panel" onClick={onClose}>
+        <button className="ws-icon-btn" title="Ocultar" onClick={onClose}>
           ✕
         </button>
       </div>
-
       <div className="ws-term-bodies">
-        {/* App (output-only) */}
-        <Term
-          key="app"
-          wsId="__app__"
-          numId={-1}
-          project={project}
-          terminalPort={terminalPort}
-          hidden={panel !== 'app'}
-          readOnly
-          killSet={killSet.current}
-        />
-        {/* Terminales (PTY) */}
         {terms.map((id) => (
           <Term
             key={id}
@@ -162,13 +156,10 @@ export function TerminalDock({
             numId={id}
             project={project}
             terminalPort={terminalPort}
-            hidden={panel !== 'terminal' || id !== active}
+            hidden={id !== active}
             killSet={killSet.current}
           />
         ))}
-        {panel === 'terminal' && terms.length === 0 && (
-          <div className="ws-term-empty">Sin terminales. Pulsa + para abrir una.</div>
-        )}
       </div>
     </div>
   )
@@ -179,7 +170,7 @@ function Term({
   numId,
   project,
   terminalPort,
-  hidden,
+  hidden = false,
   readOnly = false,
   killSet,
 }: {
@@ -187,9 +178,9 @@ function Term({
   numId: number
   project: string
   terminalPort: number
-  hidden: boolean
+  hidden?: boolean
   readOnly?: boolean
-  killSet: Set<number>
+  killSet?: Set<number>
 }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const fitRef = useRef<(() => void) | null>(null)
@@ -255,7 +246,7 @@ function Term({
     return () => {
       ro.disconnect()
       dataSub?.dispose()
-      if (!readOnly && killSet.has(numId) && ws.readyState === WebSocket.OPEN) {
+      if (!readOnly && killSet?.has(numId) && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'kill' }))
       }
       ws.close()
