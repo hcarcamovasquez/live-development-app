@@ -150,8 +150,10 @@ agentApi.post('/chat', async (c) => {
   const row = getProjectRow(s)
   if (!row) return c.json({ error: 'Proyecto no encontrado' }, 404)
 
+  // Modelo configurable por env (GEMINI_MODEL); default Gemini 3.1 Pro. Si tu key
+  // no tiene acceso a uno, cámbialo sin tocar código (p. ej. gemini-2.5-flash).
   const result = streamText({
-    model: google('gemini-2.0-flash'),
+    model: google(process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview'),
     system: `Eres un asistente de desarrollo de software embebido en un IDE web.
 Estás trabajando sobre el proyecto "${row.name}" (slug: ${s}).
 Tu misión es ayudar al desarrollador a escribir, modificar y organizar su código.

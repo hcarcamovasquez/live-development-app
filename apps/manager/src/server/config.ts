@@ -18,9 +18,10 @@ export const config = {
   // Sufijo de dominio para el workspace (p. ej. tu wildcard o <ip>.sslip.io).
   domainSuffix: process.env.WORKSPACE_DOMAIN_SUFFIX ?? '',
 
-  // Key de Gemini (agente IA). Si está en el manager, se PROPAGA automáticamente
-  // a cada workspace nuevo (así no hay que configurarla una por una).
+  // Key + modelo de Gemini (agente IA). Si están en el manager, se PROPAGAN
+  // automáticamente a cada workspace nuevo (sin configurarlos una por una).
   geminiApiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '',
+  geminiModel: process.env.GEMINI_MODEL ?? 'gemini-3.1-pro-preview',
 }
 
 export function assertDokployConfig(): void {

@@ -94,6 +94,7 @@ export async function createAndDeploy(name: string, slug: string): Promise<Creat
     'DB_PATH=/home/node/projects/registry.db',
     `WORKSPACE_ID=${slug}`,
     `GOOGLE_GENERATIVE_AI_API_KEY=${config.geminiApiKey}`,
+    `GEMINI_MODEL=${config.geminiModel}`,
   ].join('\n')
   await post('application.saveEnvironment', {
     applicationId,
