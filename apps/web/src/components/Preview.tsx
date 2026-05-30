@@ -36,7 +36,9 @@ export function Preview({
         {url ? (
           <iframe key={nonce} title="preview" src={url} />
         ) : (
-          <div className="ws-preview-empty">esperando al dev server del proyecto…</div>
+          <div className="ws-preview-empty">
+            App detenida — pulsa <b>▶ Run</b> en la terminal <b>App</b> para arrancarla.
+          </div>
         )}
       </div>
     </div>

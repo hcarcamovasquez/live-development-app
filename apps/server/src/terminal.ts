@@ -4,6 +4,7 @@ import * as pty from 'node-pty'
 import { getProjectRow } from './db.js'
 import { projectPath, slug } from './projects.js'
 import { terminalPort } from './paths.js'
+import { attachAppClient } from './apprunner.js'
 
 /**
  * Servidor de TERMINALES con sesiones PERSISTENTES en el servidor.
@@ -39,6 +40,13 @@ export function startTerminalServer(): Server {
       ws.close(1008, 'Proyecto no encontrado')
       return
     }
+
+    // Terminal especial "App": salida del dev server (no es una PTY/shell).
+    if (id === '__app__') {
+      attachAppClient(s, ws)
+      return
+    }
+
     const key = `${s}::${id}`
 
     // Reutiliza la sesión existente o crea una nueva PTY.

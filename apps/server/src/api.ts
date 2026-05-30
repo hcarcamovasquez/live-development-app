@@ -2,34 +2,25 @@ import { Hono, type Context } from 'hono'
 import { readFile, writeFile, readdir, rm, mkdir } from 'node:fs/promises'
 import { resolve, relative, isAbsolute, join, dirname } from 'node:path'
 import { projectsDir, terminalPort } from './paths.js'
-import {
-  listProjects,
-  createProject,
-  openProject,
-  deleteProject,
-  slug,
-  projectPath,
-} from './projects.js'
+import { listProjects, createProject, deleteProject, slug, projectPath } from './projects.js'
 import { getProjectRow } from './db.js'
 import { statusOf, showHead, commit, stageFile, unstageFile, discardFile } from './git.js'
+import { appState, runApp, stopApp } from './apprunner.js'
 
-type TreeNode = { name: string; path: string; type: 'file' | 'dir'; children?: TreeNode[] }
-const IGNORE = new Set(['node_modules', 'dist', '.git', '.DS_Store'])
+type TreeNode = { name: string; path: string; type: 'file' | 'dir' }
+// Solo se ocultan los internos de git y metadatos de macOS; node_modules SÍ se muestra.
+const IGNORE = new Set(['.git', '.DS_Store'])
 
-async function buildTree(dir: string, base: string): Promise<TreeNode[]> {
-  const entries = await readdir(dir, { withFileTypes: true })
+// Lee UN nivel del árbol (carga perezosa: node_modules puede ser enorme).
+async function readLevel(absDir: string, base: string): Promise<TreeNode[]> {
+  const entries = await readdir(absDir, { withFileTypes: true })
   const nodes: TreeNode[] = []
   for (const e of entries) {
     if (IGNORE.has(e.name)) continue
-    const abs = join(dir, e.name)
-    const rel = relative(base, abs)
-    if (e.isDirectory()) {
-      nodes.push({ name: e.name, path: rel, type: 'dir', children: await buildTree(abs, base) })
-    } else if (e.isFile()) {
-      nodes.push({ name: e.name, path: rel, type: 'file' })
-    }
+    if (!e.isDirectory() && !e.isFile()) continue
+    const rel = relative(base, join(absDir, e.name))
+    nodes.push({ name: e.name, path: rel, type: e.isDirectory() ? 'dir' : 'file' })
   }
-  // Carpetas primero, luego archivos; alfabético dentro de cada grupo.
   nodes.sort((a, b) =>
     a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1,
   )
@@ -76,11 +67,29 @@ api.post('/projects', async (c) => {
   }
 })
 
-// Arranca (o reutiliza) el dev server del proyecto y devuelve su URL de preview.
-api.post('/projects/:slug/open', async (c) => {
+// ── App runner (Run / Stop / estado del dev server) ──────────────────────────
+function appGuard(c: Context): string {
+  const s = slug(c.req.param('slug') ?? '')
+  if (!getProjectRow(s)) throw new Error('Proyecto no encontrado')
+  return s
+}
+api.get('/app/:slug', (c) => {
   try {
-    const { url, port } = await openProject(c.req.param('slug'))
-    return c.json({ url, port })
+    return c.json(appState(appGuard(c)))
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 400)
+  }
+})
+api.post('/app/:slug/run', (c) => {
+  try {
+    return c.json(runApp(appGuard(c)))
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 400)
+  }
+})
+api.post('/app/:slug/stop', (c) => {
+  try {
+    return c.json(stopApp(appGuard(c)))
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : String(err) }, 400)
   }
@@ -96,13 +105,15 @@ api.delete('/projects/:slug', async (c) => {
   }
 })
 
-// Árbol de archivos del proyecto (excluye node_modules, dist, .git).
+// Un nivel del árbol (carga perezosa). ?dir = subcarpeta relativa ('' = raíz).
 api.get('/tree', async (c) => {
   const project = c.req.query('project')
+  const dir = c.req.query('dir') ?? ''
   if (!project) return c.json({ error: 'falta ?project' }, 400)
   try {
     const base = projectRoot(project)
-    return c.json({ tree: await buildTree(base, base) })
+    const abs = dir ? safeResolve(project, dir) : base
+    return c.json({ dir, entries: await readLevel(abs, base) })
   } catch (err) {
     return c.json({ error: String(err) }, 400)
   }

@@ -4,75 +4,89 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 
 /**
- * Dock de terminales con sesiones PERSISTENTES en el servidor: cada pestaña tiene
- * un id estable (guardado por proyecto). Al recargar, se reconecta a la misma PTY
- * y el servidor reenvía el scrollback. Las inactivas se ocultan pero siguen vivas.
+ * Dock de terminales. La primera pestaña "App" es especial y NO se puede cerrar:
+ * muestra la salida del dev server (install + vite) y se controla con Run/Stop.
+ * Las demás son terminales (PTY) normales, persistentes en el servidor.
  */
-type TermsState = { ids: number[]; active: number; counter: number }
+type TermsState = { ids: number[]; active: number; counter: number } // active 0 = App
+const APP = 0
 
 function loadTerms(project: string): TermsState {
   try {
     const s = JSON.parse(localStorage.getItem(`ide.terms.${project}`) ?? 'null')
-    if (s && Array.isArray(s.ids) && s.ids.length) return s
+    if (s && Array.isArray(s.ids)) return { ids: s.ids, active: s.active ?? APP, counter: s.counter ?? 0 }
   } catch {
     /* noop */
   }
-  return { ids: [1], active: 1, counter: 1 }
+  return { ids: [], active: APP, counter: 0 }
 }
 function saveTerms(project: string, s: TermsState) {
   localStorage.setItem(`ide.terms.${project}`, JSON.stringify(s))
 }
 
+const STATUS_LABEL: Record<string, string> = {
+  idle: 'detenida',
+  installing: 'instalando…',
+  starting: 'arrancando…',
+  running: 'corriendo',
+  error: 'error',
+}
+
 export function TerminalDock({
   project,
   terminalPort,
+  appStatus,
+  onRun,
+  onStop,
   onClose,
 }: {
   project: string
   terminalPort: number
+  appStatus: string
+  onRun: () => void
+  onStop: () => void
   onClose: () => void
 }) {
   const [state, setState] = useState<TermsState>(() => loadTerms(project))
   const { ids: terms, active } = state
-  // Ids cuya PTY debe matarse al desmontar (cierre explícito de pestaña).
   const killSet = useRef<Set<number>>(new Set())
 
   useEffect(() => saveTerms(project, state), [project, state])
 
   const setActive = (id: number) => setState((s) => ({ ...s, active: id }))
-
   const addTerm = () =>
     setState((s) => {
       const id = s.counter + 1
       return { ids: [...s.ids, id], active: id, counter: id }
     })
-
   const closeTerm = (id: number) => {
-    killSet.current.add(id) // al desmontar, esta sí mata la PTY
+    killSet.current.add(id)
     setState((s) => {
-      const idx = s.ids.indexOf(id)
       const ids = s.ids.filter((t) => t !== id)
-      if (ids.length === 0) {
-        onClose()
-        return s
-      }
-      const nextActive = id === s.active ? (ids[idx - 1] ?? ids[0]) : s.active
-      return { ...s, ids, active: nextActive }
+      return { ...s, ids, active: id === s.active ? APP : s.active }
     })
   }
+
+  const busy = appStatus === 'running' || appStatus === 'starting' || appStatus === 'installing'
 
   return (
     <div className="ws-terminal">
       <div className="ws-term-head">
         <div className="ws-term-tabs">
-          {terms.map((id, i) => (
+          <button
+            className={`ws-term-tab app ${active === APP ? 'active' : ''}`}
+            onClick={() => setActive(APP)}
+          >
+            <span className={`ws-app-dot ${appStatus}`} /> App
+          </button>
+          {terms.map((id) => (
             <button
               key={id}
               className={`ws-term-tab ${id === active ? 'active' : ''}`}
               onClick={() => setActive(id)}
             >
               <span className="ws-term-icon">›_</span>
-              Local{i > 0 ? ` (${i + 1})` : ''}
+              Local
               <span
                 className="ws-term-tab-close"
                 title="Cerrar sesión"
@@ -89,7 +103,21 @@ export function TerminalDock({
             +
           </button>
         </div>
-        <span className="ws-term-cwd">~/.live-development-app/projects/{project}</span>
+
+        {/* Controles de la app (arriba) */}
+        <div className="ws-app-controls">
+          {busy ? (
+            <button className="ws-app-stop" onClick={onStop} title="Detener app">
+              ■ Stop
+            </button>
+          ) : (
+            <button className="ws-app-run" onClick={onRun} title="Instalar y arrancar app">
+              ▶ Run
+            </button>
+          )}
+          <span className="ws-app-status">{STATUS_LABEL[appStatus] ?? appStatus}</span>
+        </div>
+
         <span className="ws-spacer" />
         <button className="ws-icon-btn" title="Ocultar panel" onClick={onClose}>
           ✕
@@ -97,10 +125,22 @@ export function TerminalDock({
       </div>
 
       <div className="ws-term-bodies">
+        {/* Terminal App (output-only) */}
+        <Term
+          key="app"
+          wsId="__app__"
+          project={project}
+          terminalPort={terminalPort}
+          hidden={active !== APP}
+          readOnly
+          killSet={killSet.current}
+          numId={APP}
+        />
         {terms.map((id) => (
           <Term
             key={id}
-            id={id}
+            wsId={String(id)}
+            numId={id}
             project={project}
             terminalPort={terminalPort}
             hidden={id !== active}
@@ -112,18 +152,21 @@ export function TerminalDock({
   )
 }
 
-/** Una sesión de terminal (xterm + WebSocket a una PTY persistente). */
 function Term({
-  id,
+  wsId,
+  numId,
   project,
   terminalPort,
   hidden,
+  readOnly = false,
   killSet,
 }: {
-  id: number
+  wsId: string
+  numId: number
   project: string
   terminalPort: number
   hidden: boolean
+  readOnly?: boolean
   killSet: Set<number>
 }) {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -137,21 +180,19 @@ function Term({
       fontFamily: "'JetBrains Mono', ui-monospace, monospace",
       fontSize: 13,
       lineHeight: 1.2,
-      cursorBlink: true,
+      cursorBlink: !readOnly,
+      disableStdin: readOnly,
       theme: {
         background: '#2b2b2b',
         foreground: '#cfd2d6',
-        cursor: '#bbbbbb',
+        cursor: readOnly ? '#2b2b2b' : '#bbbbbb',
         selectionBackground: '#214283',
-        black: '#2b2b2b',
         red: '#ff6b68',
         green: '#a8c023',
         yellow: '#d6bf55',
         blue: '#5394ec',
         magenta: '#ae8abe',
         cyan: '#299999',
-        white: '#cfd2d6',
-        brightBlack: '#5c6370',
       },
     })
     const fit = new FitAddon()
@@ -160,7 +201,7 @@ function Term({
 
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     const ws = new WebSocket(
-      `${proto}://${location.hostname}:${terminalPort}/?project=${encodeURIComponent(project)}&id=${id}`,
+      `${proto}://${location.hostname}:${terminalPort}/?project=${encodeURIComponent(project)}&id=${wsId}`,
     )
 
     const sendResize = () => {
@@ -176,37 +217,33 @@ function Term({
     fitRef.current = sendResize
 
     ws.onopen = () => {
-      term.focus()
+      if (!readOnly) term.focus()
       sendResize()
     }
     ws.onmessage = (e) => term.write(typeof e.data === 'string' ? e.data : '')
-    ws.onclose = () => {
-      if (!disposed) term.write('\r\n\x1b[2m[sesión terminada]\x1b[0m\r\n')
-    }
 
-    const dataSub = term.onData((d) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'input', data: d }))
-      }
-    })
+    const dataSub = readOnly
+      ? null
+      : term.onData((d) => {
+          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'input', data: d }))
+        })
 
     const ro = new ResizeObserver(() => sendResize())
     ro.observe(hostRef.current)
 
     return () => {
       disposed = true
+      void disposed
       ro.disconnect()
-      dataSub.dispose()
-      // Cierre explícito de la pestaña -> mata la PTY en el servidor.
-      // Desmontaje normal (toggle/navegar) -> solo desconecta; la PTY persiste.
-      if (killSet.has(id) && ws.readyState === WebSocket.OPEN) {
+      dataSub?.dispose()
+      if (!readOnly && killSet.has(numId) && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'kill' }))
       }
       ws.close()
       term.dispose()
       fitRef.current = null
     }
-  }, [id, project, terminalPort, killSet])
+  }, [wsId, numId, project, terminalPort, readOnly, killSet])
 
   useEffect(() => {
     if (!hidden) fitRef.current?.()

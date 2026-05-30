@@ -1,15 +1,14 @@
-import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdir, writeFile, access, rm } from 'node:fs/promises'
-import { createServer as netCreateServer } from 'node:net'
 import { join, dirname } from 'node:path'
-import { projectsDir, previewPortBase } from './paths.js'
+import { projectsDir } from './paths.js'
 import { listProjectRows, getProjectRow, insertProjectRow, deleteProjectRow } from './db.js'
 import { initRepo } from './git.js'
+import { appState, stopApp } from './apprunner.js'
 
 /**
  * Gestiona MÚLTIPLES proyectos. Cada proyecto es una app Vite COMPLETA e
- * INDEPENDIENTE (sus archivos, su node_modules, su dev server propio), persistida
- * bajo PROJECTS_DIR. El registro (metadata) vive en SQLite (db.ts).
+ * INDEPENDIENTE persistida bajo PROJECTS_DIR; el registro vive en SQLite (db.ts).
+ * El dev server NO se arranca aquí: lo controla el usuario con Run/Stop (apprunner).
  */
 
 /** Normaliza un nombre a un slug seguro para usar como carpeta. */
@@ -54,7 +53,7 @@ dist
     'vite.config.js': `import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Dev server propio del proyecto. El puerto lo asigna el editor por CLI.
+// Dev server propio del proyecto. El puerto lo asigna el runner por CLI.
 export default defineConfig({ plugins: [react()] })
 `,
     'index.html': `<!doctype html>
@@ -82,8 +81,7 @@ createRoot(document.getElementById('root')!).render(
 `,
     'src/UserApp.tsx': `import { useState } from 'react'
 
-// 👋 Proyecto "${name}". App Vite INDEPENDIENTE con su propio dev server.
-// Edítala desde el editor; su Vite hace hot reload sin recargar la página.
+// 👋 Proyecto "${name}". Pulsa Run en la terminal "App" para instalar y arrancar.
 export default function UserApp() {
   const [count, setCount] = useState(0)
 
@@ -112,12 +110,6 @@ export default function UserApp() {
   }
 }
 
-// ── Dev servers en ejecución (uno por proyecto, bajo demanda) ─────────────────
-type Running = { port: number; child: ChildProcess; url: string }
-const running = new Map<string, Running>()
-// Opens en curso, para deduplicar llamadas concurrentes (p. ej. React StrictMode).
-const opening = new Map<string, Promise<{ url: string; port: number }>>()
-
 async function exists(p: string): Promise<boolean> {
   try {
     await access(p)
@@ -135,21 +127,21 @@ export type ProjectInfo = {
   url: string | null
 }
 
-/** Lista los proyectos del registro (SQLite) + su estado de ejecución. */
+/** Lista los proyectos del registro (SQLite) + estado del app runner. */
 export function listProjects(): ProjectInfo[] {
   return listProjectRows().map((r) => {
-    const live = running.get(r.slug)
+    const app = appState(r.slug)
     return {
       name: r.name,
       slug: r.slug,
       createdAt: r.created_at,
-      running: !!live,
-      url: live?.url ?? null,
+      running: app.status === 'running',
+      url: app.url,
     }
   })
 }
 
-/** Crea un proyecto: scaffold en disco + install + registro en SQLite. */
+/** Crea un proyecto: scaffold + git init + commit. NO instala (lo hace Run). */
 export async function createProject(name: string): Promise<ProjectInfo> {
   const s = slug(name)
   if (!s) throw new Error('Nombre inválido')
@@ -161,122 +153,19 @@ export async function createProject(name: string): Promise<ProjectInfo> {
     await mkdir(dirname(abs), { recursive: true })
     await writeFile(abs, content, 'utf8')
   }
-  await run('pnpm', ['install', '--ignore-workspace'], dir)
-  await initRepo(s, name) // git init + commit inicial (node_modules ya ignorado)
+  await initRepo(s, name) // git init + commit (node_modules ignorado, aún no existe)
 
   const row = insertProjectRow(name, s)
   return { name: row.name, slug: row.slug, createdAt: row.created_at, running: false, url: null }
 }
 
-/** Arranca (o reutiliza) el dev server propio del proyecto y devuelve su URL. */
-export function openProject(s: string): Promise<{ url: string; port: number }> {
-  const row = getProjectRow(s)
-  if (!row) return Promise.reject(new Error('Proyecto no encontrado'))
-
-  const live = running.get(s)
-  if (live && !live.child.killed) {
-    return Promise.resolve({ url: live.url, port: live.port })
-  }
-  // Si ya hay un arranque en curso para este proyecto, reutilízalo.
-  const inflight = opening.get(s)
-  if (inflight) return inflight
-
-  const promise = spawnDevServer(s).finally(() => opening.delete(s))
-  opening.set(s, promise)
-  return promise
-}
-
-async function spawnDevServer(s: string): Promise<{ url: string; port: number }> {
-  const dir = projectPath(s)
-  if (!(await exists(join(dir, 'node_modules')))) {
-    await run('pnpm', ['install', '--ignore-workspace'], dir)
-  }
-
-  const port = await getFreePort(previewPortBase)
-  const bin = join(dir, 'node_modules', '.bin', 'vite')
-  // --host 127.0.0.1 fuerza IPv4, consistente con el chequeo de puerto libre.
-  const child = spawn(bin, ['--port', String(port), '--strictPort', '--host', '127.0.0.1'], {
-    cwd: dir,
-    env: { ...process.env, FORCE_COLOR: '0' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout?.on('data', (d) => process.stdout.write(`  [${s}] ${d}`))
-  child.stderr?.on('data', (d) => process.stderr.write(`  [${s}] ${d}`))
-
-  await waitForReady(child)
-  const url = `http://127.0.0.1:${port}`
-  running.set(s, { port, child, url })
-  child.on('exit', () => running.delete(s))
-  return { url, port }
-}
-
-/** Detiene el dev server de un proyecto (si está corriendo). */
-export function stopProject(s: string): void {
-  const live = running.get(s)
-  if (live) {
-    live.child.kill()
-    running.delete(s)
-  }
-}
-
-/** Borra un proyecto: detiene su dev server, lo quita de SQLite y del disco. */
+/** Borra un proyecto: detiene su app, lo quita de SQLite y del disco. */
 export async function deleteProject(s: string): Promise<void> {
   if (!getProjectRow(s)) throw new Error('Proyecto no encontrado')
-  stopProject(s)
+  stopApp(s)
   deleteProjectRow(s)
   await rm(projectPath(s), { recursive: true, force: true })
 }
 
-/** Baja todos los dev servers (al cerrar el editor). */
-export function stopAll(): void {
-  for (const { child } of running.values()) child.kill()
-  running.clear()
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function waitForReady(child: ChildProcess): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error('El dev server del proyecto no arrancó a tiempo')),
-      60_000,
-    )
-    const onData = (buf: Buffer) => {
-      if (/ready in|Local:\s+http/i.test(buf.toString())) {
-        clearTimeout(timer)
-        child.stdout?.off('data', onData)
-        resolve()
-      }
-    }
-    child.stdout?.on('data', onData)
-    child.once('exit', (code) => {
-      clearTimeout(timer)
-      reject(new Error(`El dev server del proyecto terminó (código ${code})`))
-    })
-  })
-}
-
-function isPortFree(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const srv = netCreateServer()
-    srv.once('error', () => resolve(false))
-    srv.once('listening', () => srv.close(() => resolve(true)))
-    srv.listen(port, '127.0.0.1')
-  })
-}
-
-async function getFreePort(start: number): Promise<number> {
-  const used = new Set([...running.values()].map((r) => r.port))
-  let port = start
-  while (used.has(port) || !(await isPortFree(port))) port++
-  return port
-}
-
-function run(cmd: string, args: string[], cwd: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { cwd, stdio: 'inherit' })
-    p.on('exit', (code) =>
-      code === 0 ? resolve() : reject(new Error(`${cmd} salió con código ${code}`)),
-    )
-    p.on('error', reject)
-  })
-}
+// `exists` se reexporta para otros módulos si lo necesitan.
+export { exists }

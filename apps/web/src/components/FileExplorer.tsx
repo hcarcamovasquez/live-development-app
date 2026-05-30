@@ -1,16 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { fileMeta } from './fileMeta'
 
-export type TreeNode = {
-  name: string
-  path: string
-  type: 'file' | 'dir'
-  children?: TreeNode[]
-}
+export type TreeNode = { name: string; path: string; type: 'file' | 'dir' }
 
 type Props = {
   project: string
-  tree: TreeNode[]
+  reloadKey: number
   active: string
   dirtyPaths: Set<string>
   onOpen: (path: string) => void
@@ -20,78 +15,90 @@ type Props = {
 
 export function FileExplorer({
   project,
-  tree,
+  reloadKey,
   active,
   dirtyPaths,
   onOpen,
   onNewFile,
   onDeleteFile,
 }: Props) {
+  // Caché de entradas por carpeta ('' = raíz). Carga perezosa al expandir.
+  const [cache, setCache] = useState<Record<string, TreeNode[]>>({})
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [creatingIn, setCreatingIn] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState('')
+  const expandedRef = useRef(expanded)
+  expandedRef.current = expanded
 
+  const loadDir = useCallback(
+    (dir: string) =>
+      fetch(`/api/tree?project=${encodeURIComponent(project)}&dir=${encodeURIComponent(dir)}`)
+        .then((r) => r.json())
+        .then((d) => setCache((c) => ({ ...c, [dir]: d.entries ?? [] })))
+        .catch(() => {}),
+    [project],
+  )
+
+  // (Re)carga la raíz y las carpetas ya expandidas cuando cambia el proyecto o reloadKey.
   useEffect(() => {
+    setCache({})
+    loadDir('')
+    for (const d of expandedRef.current) loadDir(d)
+  }, [project, reloadKey, loadDir])
+
+  const toggle = (dir: string) => {
     setExpanded((prev) => {
       const next = new Set(prev)
-      for (const n of tree) if (n.type === 'dir') next.add(n.path)
+      if (next.has(dir)) next.delete(dir)
+      else {
+        next.add(dir)
+        if (!cache[dir]) loadDir(dir)
+      }
       return next
     })
-  }, [tree])
+  }
 
-  const toggle = (path: string) =>
+  const expandAncestors = (filePath: string) => {
+    const parts = filePath.split('/')
+    parts.pop()
+    let acc = ''
     setExpanded((prev) => {
       const next = new Set(prev)
-      next.has(path) ? next.delete(path) : next.add(path)
-      return next
-    })
-
-  const expandAncestors = (filePath: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      const parts = filePath.split('/')
-      parts.pop()
-      let acc = ''
-      for (const part of parts) {
-        acc = acc ? `${acc}/${part}` : part
+      for (const p of parts) {
+        acc = acc ? `${acc}/${p}` : p
         next.add(acc)
       }
       return next
     })
-
-  const startCreate = (dir: string) => {
-    setCreatingIn(dir)
-    setDraft(dir ? `${dir}/` : '')
   }
 
   const submitNew = () => {
     const p = draft.trim().replace(/^\/+/, '')
     if (p) {
-      onNewFile(p)
       expandAncestors(p)
+      onNewFile(p)
     }
     setDraft('')
-    setCreatingIn(null)
+    setCreating(false)
   }
 
   return (
     <aside className="ws-explorer">
       <div className="ws-tw-head">
         <span className="ws-tw-title">Project</span>
-        <button className="ws-tw-action" title="Nuevo archivo" onClick={() => startCreate('')}>
+        <button className="ws-tw-action" title="Nuevo archivo" onClick={() => setCreating((v) => !v)}>
           +
         </button>
       </div>
 
       <div className="ws-tree">
-        {/* Nodo raíz: el proyecto (estilo content root de WebStorm). */}
         <div className="ws-row root" style={{ paddingLeft: 8 }}>
           <span className="ws-chevron">▾</span>
           <span className="ws-root-icon" />
           <span className="ws-row-name">{project}</span>
         </div>
 
-        {creatingIn !== null && (
+        {creating && (
           <div className="ws-new-row" style={{ paddingLeft: 26 }}>
             <input
               className="ws-new-input"
@@ -103,124 +110,116 @@ export function FileExplorer({
                 if (e.key === 'Enter') submitNew()
                 if (e.key === 'Escape') {
                   setDraft('')
-                  setCreatingIn(null)
+                  setCreating(false)
                 }
               }}
-              onBlur={() => (draft.trim() ? submitNew() : setCreatingIn(null))}
+              onBlur={() => (draft.trim() ? submitNew() : setCreating(false))}
             />
           </div>
         )}
 
-        {tree.map((node) => (
-          <TreeItem
-            key={node.path}
-            node={node}
-            depth={1}
-            active={active}
-            expanded={expanded}
-            dirtyPaths={dirtyPaths}
-            onToggle={toggle}
-            onOpen={onOpen}
-            onCreateIn={startCreate}
-            onDeleteFile={onDeleteFile}
-          />
-        ))}
+        <Level
+          dir=""
+          depth={1}
+          cache={cache}
+          expanded={expanded}
+          active={active}
+          dirtyPaths={dirtyPaths}
+          onToggle={toggle}
+          onOpen={onOpen}
+          onDeleteFile={onDeleteFile}
+        />
       </div>
     </aside>
   )
 }
 
-function TreeItem({
-  node,
+function Level({
+  dir,
   depth,
-  active,
+  cache,
   expanded,
+  active,
   dirtyPaths,
   onToggle,
   onOpen,
-  onCreateIn,
   onDeleteFile,
 }: {
-  node: TreeNode
+  dir: string
   depth: number
-  active: string
+  cache: Record<string, TreeNode[]>
   expanded: Set<string>
+  active: string
   dirtyPaths: Set<string>
-  onToggle: (path: string) => void
+  onToggle: (dir: string) => void
   onOpen: (path: string) => void
-  onCreateIn: (dir: string) => void
   onDeleteFile: (path: string) => void
 }) {
-  const indent = 8 + depth * 14
-
-  if (node.type === 'dir') {
-    const isOpen = expanded.has(node.path)
-    return (
-      <div>
-        <div className="ws-row dir" style={{ paddingLeft: indent }} onClick={() => onToggle(node.path)}>
-          <span className="ws-chevron">{isOpen ? '▾' : '▸'}</span>
-          <FolderIcon open={isOpen} />
-          <span className="ws-row-name">{node.name}</span>
-          <button
-            className="ws-row-add"
-            title={`Nuevo archivo en ${node.name}/`}
-            onClick={(e) => {
-              e.stopPropagation()
-              onCreateIn(node.path)
-            }}
-          >
-            +
-          </button>
-        </div>
-        {isOpen &&
-          node.children?.map((child) => (
-            <TreeItem
-              key={child.path}
-              node={child}
-              depth={depth + 1}
-              active={active}
-              expanded={expanded}
-              dirtyPaths={dirtyPaths}
-              onToggle={onToggle}
-              onOpen={onOpen}
-              onCreateIn={onCreateIn}
-              onDeleteFile={onDeleteFile}
-            />
-          ))}
-      </div>
-    )
-  }
-
-  const isActive = node.path === active
-  const isDirty = dirtyPaths.has(node.path)
-  const meta = fileMeta(node.name)
+  const entries = cache[dir]
+  if (!entries) return <div className="ws-row loading" style={{ paddingLeft: 10 + depth * 14 }}>…</div>
 
   return (
-    <div
-      className={`ws-row file ${isActive ? 'active' : ''}`}
-      style={{ paddingLeft: indent }}
-      onClick={() => onOpen(node.path)}
-    >
-      <span className="ws-chevron empty" />
-      <span
-        className="ws-badge"
-        style={{ background: meta.color, color: meta.dark ? '#1c1c1c' : '#fff' }}
-      >
-        {meta.badge}
-      </span>
-      <span className="ws-row-name">{node.name}</span>
-      {isDirty && <span className="ws-dirty" title="sin guardar" />}
-      <button
-        className="ws-row-del"
-        title="Borrar archivo"
-        onClick={(e) => {
-          e.stopPropagation()
-          onDeleteFile(node.path)
-        }}
-      >
-        ✕
-      </button>
-    </div>
+    <>
+      {entries.map((node) => {
+        const indent = 8 + depth * 14
+        if (node.type === 'dir') {
+          const open = expanded.has(node.path)
+          return (
+            <div key={node.path}>
+              <div className="ws-row dir" style={{ paddingLeft: indent }} onClick={() => onToggle(node.path)}>
+                <span className="ws-chevron">{open ? '▾' : '▸'}</span>
+                <FolderIcon open={open} />
+                <span className="ws-row-name">{node.name}</span>
+              </div>
+              {open && (
+                <Level
+                  dir={node.path}
+                  depth={depth + 1}
+                  cache={cache}
+                  expanded={expanded}
+                  active={active}
+                  dirtyPaths={dirtyPaths}
+                  onToggle={onToggle}
+                  onOpen={onOpen}
+                  onDeleteFile={onDeleteFile}
+                />
+              )}
+            </div>
+          )
+        }
+        const meta = fileMeta(node.name)
+        const isActive = node.path === active
+        const isDirty = dirtyPaths.has(node.path)
+        return (
+          <div
+            key={node.path}
+            className={`ws-row file ${isActive ? 'active' : ''}`}
+            style={{ paddingLeft: indent }}
+            onClick={() => onOpen(node.path)}
+          >
+            <span className="ws-chevron empty" />
+            <span
+              className="ws-badge"
+              style={{ background: meta.color, color: meta.dark ? '#1c1c1c' : '#fff' }}
+            >
+              {meta.badge}
+            </span>
+            <span className="ws-row-name">{node.name}</span>
+            {isDirty && <span className="ws-dirty" />}
+            <button
+              className="ws-row-del"
+              title="Borrar archivo"
+              onClick={(e) => {
+                e.stopPropagation()
+                onDeleteFile(node.path)
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )
+      })}
+    </>
   )
 }
 

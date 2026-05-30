@@ -6,8 +6,8 @@ import { readFile, mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { api } from './api.js'
 import { webRoot, webDist, projectsDir } from './paths.js'
-import { stopAll } from './projects.js'
 import { startTerminalServer, stopTerminals } from './terminal.js'
+import { stopAllApps } from './apprunner.js'
 
 const PORT = Number(process.env.PORT ?? 3000)
 const isProd = process.env.NODE_ENV === 'production'
@@ -18,10 +18,10 @@ await mkdir(projectsDir, { recursive: true })
 // Servidor de terminales (PTY por WebSocket).
 startTerminalServer()
 
-// Al cerrar el editor, baja los dev servers y las terminales.
+// Al cerrar el editor, baja las apps (dev servers) y las terminales.
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, () => {
-    stopAll()
+    stopAllApps()
     stopTerminals()
     process.exit(0)
   })

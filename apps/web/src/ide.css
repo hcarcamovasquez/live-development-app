@@ -849,6 +849,71 @@
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
 }
+
+/* Pestaña App (no cerrable) + controles Run/Stop */
+.ws-term-tab.app {
+  font-weight: 600;
+  color: #d6d6d6;
+}
+.ws-app-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6a6a6a;
+}
+.ws-app-dot.running {
+  background: var(--green);
+  box-shadow: 0 0 6px rgba(89, 168, 105, 0.8);
+}
+.ws-app-dot.installing,
+.ws-app-dot.starting {
+  background: #d6bf55;
+}
+.ws-app-dot.error {
+  background: #ff6b68;
+}
+.ws-app-controls {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  align-self: center;
+  padding-left: 12px;
+  margin-left: 4px;
+  border-left: 1px solid #2f2f2f;
+}
+.ws-app-run,
+.ws-app-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+}
+.ws-app-run {
+  background: var(--green);
+  color: #0d1f12;
+}
+.ws-app-stop {
+  background: #d05050;
+  color: #1a0606;
+}
+.ws-app-run:hover,
+.ws-app-stop:hover {
+  filter: brightness(1.08);
+}
+.ws-app-status {
+  font-size: 11px;
+  color: var(--dim);
+  font-family: 'JetBrains Mono', monospace;
+}
+.ws-row.loading {
+  color: #6a6a6a;
+  font-size: 11px;
+  padding: 4px 0;
+}
 .ws-term-bodies {
   flex: 1;
   min-height: 0;

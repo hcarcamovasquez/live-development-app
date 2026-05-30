@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Editor } from './Editor'
 import { Preview } from './Preview'
-import { FileExplorer, type TreeNode } from './FileExplorer'
+import { FileExplorer } from './FileExplorer'
 import { GitPanel } from './GitPanel'
 import { DiffView } from './DiffView'
 import { ConfirmModal } from './ConfirmModal'
@@ -52,30 +52,18 @@ const loadSession = (project: string): Session | null => {
 const saveSession = (project: string, s: Session) =>
   localStorage.setItem(`ide.session.${project}`, JSON.stringify(s))
 
-// Aplana el árbol a un set de rutas de archivo (para validar pestañas guardadas).
-function flattenFiles(nodes: TreeNode[]): Set<string> {
-  const out = new Set<string>()
-  const walk = (ns: TreeNode[]) => {
-    for (const n of ns) {
-      if (n.type === 'file') out.add(n.path)
-      else if (n.children) walk(n.children)
-    }
-  }
-  walk(nodes)
-  return out
-}
-
 export function EditorView({ project, onBack }: { project: string; onBack: () => void }) {
-  const [tree, setTree] = useState<TreeNode[]>([])
   const [active, setActive] = useState('')
   const [tabs, setTabs] = useState<string[]>([])
   const [files, setFiles] = useState<Record<string, FileState>>({})
+  const [treeReload, setTreeReload] = useState(0) // bump para refrescar el explorador
   const [previewUrl, setPreviewUrl] = useState('')
   const [previewNonce, setPreviewNonce] = useState(0)
+  const [appStatus, setAppStatus] = useState<string>('idle')
   const [cursor, setCursor] = useState({ line: 1, col: 1 })
   const [saveFlash, setSaveFlash] = useState(false)
   const [delFile, setDelFile] = useState<string | null>(null)
-  const [showTerminal, setShowTerminal] = useState(false)
+  const [showTerminal, setShowTerminal] = useState(true)
   const [terminalPort, setTerminalPort] = useState(0)
   const [leftView, setLeftView] = useState<'files' | 'git'>('files')
   const [leftOpen, setLeftOpen] = useState(() => localStorage.getItem('ide.leftOpen') !== '0')
@@ -128,6 +116,7 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
         }
       })
       .catch(() => {})
+      .finally(() => setTreeReload((k) => k + 1))
   }
 
   // Tamaños de paneles (redimensionables, persistidos en localStorage).
@@ -180,18 +169,6 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
 
   const q = `?project=${encodeURIComponent(project)}`
 
-  const loadTree = useCallback(
-    (): Promise<TreeNode[]> =>
-      fetch(`/api/tree${q}`)
-        .then((r) => r.json())
-        .then((d) => {
-          const nodes: TreeNode[] = d.tree ?? []
-          setTree(nodes)
-          return nodes
-        }),
-    [q],
-  )
-
   const openFile = useCallback(
     async (path: string) => {
       setActive(path)
@@ -210,37 +187,73 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
   useEffect(() => {
     let cancelled = false
     restoredRef.current = false
-    fetch(`/api/projects/${encodeURIComponent(project)}/open`, { method: 'POST' })
-      .then((r) => r.json())
-      .then((d) => !cancelled && setPreviewUrl(d.url ?? ''))
-      .catch(() => {})
     fetch('/api/config')
       .then((r) => r.json())
       .then((d) => !cancelled && setTerminalPort(d.terminalPort ?? 0))
       .catch(() => {})
 
-    loadTree().then((nodes) => {
-      if (cancelled) return
-      // Restaura la sesión guardada, validando que los archivos sigan existiendo.
-      const existing = flattenFiles(nodes)
-      const session = loadSession(project)
-      const validTabs = (session?.tabs ?? []).filter((p) => existing.has(p))
-      if (validTabs.length) {
-        setTabs(validTabs)
-        setShowTerminal(!!session?.terminal)
-        const act =
-          session?.active && validTabs.includes(session.active) ? session.active : validTabs[0]
-        openFile(act)
-      } else {
-        openFile(DEFAULT_FILE)
-      }
-      restoredRef.current = true
-    })
+    // Restaura la sesión (pestañas / terminal). Archivos inexistentes se ignoran al abrir.
+    const session = loadSession(project)
+    const saved = session?.tabs ?? []
+    if (saved.length) {
+      setTabs(saved)
+      if (session && typeof session.terminal === 'boolean') setShowTerminal(session.terminal)
+      openFile(session?.active && saved.includes(session.active) ? session.active : saved[0])
+    } else {
+      openFile(DEFAULT_FILE)
+    }
+    restoredRef.current = true
     return () => {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project])
+
+  // Estado de la app (dev server): polling. Define previewUrl cuando está corriendo.
+  useEffect(() => {
+    let alive = true
+    const tick = () =>
+      fetch(`/api/app/${encodeURIComponent(project)}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (!alive) return
+          setAppStatus(d.status ?? 'idle')
+          setPreviewUrl(d.url ?? '')
+        })
+        .catch(() => {})
+    tick()
+    const iv = setInterval(tick, 2000)
+    return () => {
+      alive = false
+      clearInterval(iv)
+    }
+  }, [project])
+
+  // La app solo vive mientras el IDE está abierto: al salir/cerrar, se detiene.
+  useEffect(() => {
+    const stop = () => navigator.sendBeacon(`/api/app/${encodeURIComponent(project)}/stop`)
+    window.addEventListener('beforeunload', stop)
+    return () => {
+      window.removeEventListener('beforeunload', stop)
+      stop()
+    }
+  }, [project])
+
+  const runApp = () => {
+    fetch(`/api/app/${encodeURIComponent(project)}/run`, { method: 'POST' })
+      .then((r) => r.json())
+      .then((d) => setAppStatus(d.status ?? 'idle'))
+      .catch(() => {})
+  }
+  const stopApp = () => {
+    fetch(`/api/app/${encodeURIComponent(project)}/stop`, { method: 'POST' })
+      .then((r) => r.json())
+      .then((d) => {
+        setAppStatus(d.status ?? 'idle')
+        setPreviewUrl('')
+      })
+      .catch(() => {})
+  }
 
   // Persiste la sesión (pestañas/activo/terminal) cuando cambia, ya restaurada.
   useEffect(() => {
@@ -288,10 +301,10 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project, path, content: '' }),
     })
-    await loadTree()
     setFiles((f) => ({ ...f, [path]: { content: '', dirty: false } }))
     setTabs((t) => (t.includes(path) ? t : [...t, path]))
     setActive(path)
+    setTreeReload((k) => k + 1)
   }
 
   const confirmDeleteFile = async () => {
@@ -304,7 +317,7 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
     })
     closeTab(delFile)
     setDelFile(null)
-    await loadTree()
+    setTreeReload((k) => k + 1)
   }
 
   const current = files[active]
@@ -373,7 +386,7 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
             {leftView === 'files' ? (
               <FileExplorer
                 project={project}
-                tree={tree}
+                reloadKey={treeReload}
                 active={active}
                 dirtyPaths={dirtyPaths}
                 onOpen={openFile}
@@ -493,6 +506,9 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
           <TerminalDock
             project={project}
             terminalPort={terminalPort}
+            appStatus={appStatus}
+            onRun={runApp}
+            onStop={stopApp}
             onClose={() => setShowTerminal(false)}
           />
         </div>

@@ -27,16 +27,21 @@ API. El registro de proyectos se guarda en **SQLite** del lado del servidor.
 
 - **Listar/crear**: la consola lee/escribe el registro en **SQLite** (`node:sqlite`,
   integrado, sin dependencias nativas). Crear un proyecto hace scaffold en disco +
-  `pnpm install` (su propio `node_modules`) + alta en SQLite.
-- **Abrir**: arranca (bajo demanda) el dev server propio del proyecto en un puerto
-  libre y devuelve su URL; el editor lo embebe en un iframe.
+  `git init` + commit inicial + alta en SQLite. **No instala ni arranca nada**
+  automáticamente.
+- **Ejecutar (Run/Stop)**: en el panel de terminal hay una pestaña especial **App**
+  (no cerrable) con controles **Run/Stop** arriba. Run instala dependencias (si
+  faltan) y levanta el dev server, transmitiendo la salida a esa terminal; el editor
+  embebe la app en un iframe. La app **solo vive mientras el IDE está abierto** (se
+  detiene al salir/cerrar). Gestionado por `apprunner.ts`.
 - **Paneles**: explorador, editor, preview y terminal son **redimensionables**
   (arrastrando los divisores) y el **preview se puede ocultar/mostrar** (el editor
   se expande); los tamaños y visibilidad se recuerdan en localStorage.
-- **Editar**: el editor tiene un **explorador de archivos** (árbol del proyecto) para
+- **Editar**: el editor tiene un **explorador de archivos** (árbol del proyecto,
+  **carga perezosa** por nivel — muestra `node_modules` y todos los directorios) para
   abrir/crear/borrar archivos; cada uno se edita en Monaco con su lenguaje según la
   extensión. Guardar → `POST /api/file` → el servidor escribe el archivo → el Vite
-  **del proyecto** hace HMR → el iframe se actualiza sin recargar el editor.
+  **del proyecto** (si está corriendo) hace HMR → el iframe se actualiza sin recargar.
 - **Gestionar**: cada tarjeta del listado permite **abrir** o **borrar** el proyecto
   (con confirmación; el borrado elimina dev server + carpeta + registro).
 - **Git integrado**: cada proyecto se crea como repo (`git init` + commit inicial) y
@@ -105,10 +110,12 @@ y edita `src/UserApp.tsx`: el preview se actualiza en caliente.
 | Método | Ruta                          | Descripción                              |
 | ------ | ----------------------------- | ---------------------------------------- |
 | GET    | `/api/projects`               | Lista proyectos (desde SQLite) + estado  |
-| POST   | `/api/projects`               | Crea `{ name }` → scaffold + install     |
-| POST   | `/api/projects/:slug/open`    | Arranca el dev server → devuelve `url`   |
-| DELETE | `/api/projects/:slug`         | Borra el proyecto (dev server + disco + SQLite) |
-| GET    | `/api/tree?project=`          | Árbol de archivos (sin node_modules/dist) |
+| POST   | `/api/projects`               | Crea `{ name }` → scaffold + git (sin install) |
+| DELETE | `/api/projects/:slug`         | Borra el proyecto (app + disco + SQLite) |
+| GET    | `/api/app/:slug`              | Estado del dev server `{ status, url }`  |
+| POST   | `/api/app/:slug/run`          | Run: instala (si falta) + arranca        |
+| POST   | `/api/app/:slug/stop`         | Stop: detiene el dev server              |
+| GET    | `/api/tree?project=&dir=`     | Un nivel del árbol (carga perezosa)      |
 | GET    | `/api/file?project=&path=`    | Lee un archivo                           |
 | POST   | `/api/file`                   | Escribe `{ project, path, content }` (crea si no existe) |
 | DELETE | `/api/file?project=&path=`    | Borra un archivo                         |

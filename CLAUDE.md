@@ -39,11 +39,14 @@ pnpm start       # prod (sirve apps/web/dist)
 - **Editor (:3000)**: Hono sirve `apps/web` con Vite en *middleware mode*
   (`configFile: false` + plugin React inline para evitar reinicios de `tsx watch`).
 - **Proyectos**: viven en `PROJECTS_DIR` (def. `~/.live-development-app/projects`),
-  registrados en **SQLite** (`registry.db`). Al crear: scaffold → `pnpm install` →
-  `git init` + commit + `simple-git` como devDep del proyecto.
-- **Preview**: cada proyecto corre su **propio** dev server (Vite) bajo demanda en
-  un puerto libre desde `PREVIEW_PORT_BASE` (5174), fijado a IPv4 `127.0.0.1`;
-  el editor lo muestra en un iframe.
+  registrados en **SQLite** (`registry.db`). Al crear: scaffold + `git init` + commit
+  + `simple-git` como devDep. **No instala ni arranca** nada automáticamente.
+- **Run/Stop** (`apprunner.ts`): el dev server se controla a mano desde la terminal
+  especial **App** (no cerrable). Run instala (si falta `node_modules`) y arranca Vite
+  en un puerto libre desde `PREVIEW_PORT_BASE` (5174, IPv4 `127.0.0.1`), streaming la
+  salida por WS (`id=__app__`). La app solo vive mientras el IDE está abierto.
+- **Explorador**: árbol con **carga perezosa** por nivel (`/api/tree?dir=`), muestra
+  `node_modules` y todos los directorios.
 - **Terminal**: WebSocket en `TERMINAL_PORT` (3001) con PTY real (`node-pty`)
   **persistente** (sobrevive recargas; reconexión por `proyecto::id` con replay).
 - **Git**: `git.ts` usa **simple-git** (wrapper del binario `git` → la imagen Docker
