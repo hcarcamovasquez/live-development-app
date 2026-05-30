@@ -20,8 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # pnpm global (en /usr/local/bin, usable por cualquier usuario) en vez de corepack
 # por-usuario, para que el usuario `dev` no tenga que descargarlo en runtime.
 RUN npm install -g pnpm@11.1.1
-# Usuario no-root: el server y las terminales corren como `dev` (no root).
-RUN useradd -m -u 1000 -s /bin/bash dev
+# El server y las terminales corren como el usuario `node` (uid 1000, ya existe
+# en la imagen base), no como root.
 WORKDIR /app
 
 # Dependencias (incluye node-pty con su binario nativo) y artefactos compilados.
@@ -46,12 +46,12 @@ ENV NODE_ENV=production \
     NODE_OPTIONS=--disable-warning=ExperimentalWarning \
     PREVIEW_HMR_CLIENT_PORT=443 \
     PREVIEW_HMR_PROTOCOL=wss \
-    HOME=/home/dev \
+    HOME=/home/node \
     SHELL=/bin/bash
 
 # Persistencia de los proyectos del workspace (Dokploy monta un volumen aquí).
 VOLUME /data
 EXPOSE 3000
-# El entrypoint (root) prepara /data y hace exec gosu dev → todo corre como `dev`.
+# El entrypoint (root) prepara /data y hace exec gosu node → todo corre como `node`.
 ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
 CMD ["node", "apps/server/dist/index.js"]
