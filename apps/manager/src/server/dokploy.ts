@@ -17,10 +17,29 @@ async function post<T = unknown>(path: string, body: unknown): Promise<T> {
   return (text ? JSON.parse(text) : {}) as T
 }
 
-function randomHost(slug: string): string {
-  const rand = randomBytes(3).toString('hex')
-  const suffix = config.domainSuffix || 'traefik.me'
-  return `${slug}-${rand}.${suffix}`
+/**
+ * Host del workspace. Si hay WORKSPACE_DOMAIN_SUFFIX explícito, se construye a mano;
+ * si no, se le pide a Dokploy un dominio autogenerado, que respeta la config de la
+ * instancia (sslip.io/traefik.me + la IP del servidor) → ws-<slug>-<hash>-<ip>.sslip.io
+ */
+async function generateHost(appName: string): Promise<string> {
+  if (config.domainSuffix) {
+    const rand = randomBytes(3).toString('hex')
+    return `${appName}-${rand}.${config.domainSuffix}`
+  }
+  const res = await post<unknown>('domain.generateDomain', {
+    appName,
+    ...(config.serverId ? { serverId: config.serverId } : {}),
+  })
+  const host =
+    typeof res === 'string'
+      ? res
+      : ((res as { domain?: string; host?: string } | null)?.domain ??
+        (res as { domain?: string; host?: string } | null)?.host)
+  if (!host || typeof host !== 'string') {
+    throw new Error(`Dokploy generateDomain no devolvió dominio: ${JSON.stringify(res).slice(0, 200)}`)
+  }
+  return host
 }
 
 export type CreateResult = { applicationId: string; url: string }
@@ -28,11 +47,12 @@ export type CreateResult = { applicationId: string; url: string }
 /** Crea la app del workspace en Dokploy desde el repo del editor y la despliega. */
 export async function createAndDeploy(name: string, slug: string): Promise<CreateResult> {
   assertDokployConfig()
+  const appName = `ws-${slug}`
 
   // 1) Crear la aplicación (required: name, environmentId)
   const created = await post<{ applicationId: string }>('application.create', {
     name,
-    appName: `ws-${slug}`,
+    appName,
     description: null,
     environmentId: config.environmentId,
     serverId: config.serverId || null,
@@ -89,8 +109,8 @@ export async function createAndDeploy(name: string, slug: string): Promise<Creat
     serviceId: applicationId,
   })
 
-  // 6) Dominio (aleatorio) apuntando al puerto del editor. required: host
-  const host = randomHost(slug)
+  // 6) Dominio (autogenerado por Dokploy → sslip.io/IP) apuntando al editor. required: host
+  const host = await generateHost(appName)
   await post('domain.create', {
     applicationId,
     host,
