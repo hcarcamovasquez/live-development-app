@@ -1069,6 +1069,10 @@
 .ws-ai-tool { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--dim); margin: 4px 0; padding: 4px 8px; background: var(--editor); border-radius: 6px; border-left: 2px solid var(--border-2); }
 .ws-ai-tool.done { border-left-color: var(--green); }
 .ws-ai-tool.running { border-left-color: #d6bf55; }
+.ws-ai-tool.failed { border-left-color: #d65555; }
+.ws-ai-tool-icon { display: inline-flex; align-items: center; justify-content: center; width: 12px; flex-shrink: 0; font-size: 11px; line-height: 1; }
+.ws-ai-tool.done .ws-ai-tool-icon { color: var(--green); }
+.ws-ai-tool.failed .ws-ai-tool-icon { color: #d65555; }
 .ws-ai-tool-label { color: var(--txt-2); }
 .ws-ai-tool-detail { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--accent, #4a88c7); }
 .ws-ai-tool-spin { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid rgba(214,191,85,0.25); border-top-color: #d6bf55; animation: ws-spin 0.7s linear infinite; flex-shrink: 0; }

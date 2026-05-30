@@ -14,26 +14,11 @@ const TOOL_LABELS: Record<string, string> = {
   git_commit: '✓ Commit',
 }
 
-function storeKey(project: string) {
-  return `ide.aichat.${project}`
-}
-function loadHistory(project: string): UIMessage[] {
-  try {
-    const raw = localStorage.getItem(storeKey(project))
-    const arr = raw ? JSON.parse(raw) : null
-    return Array.isArray(arr) ? arr : []
-  } catch {
-    return []
-  }
-}
-
 export function AIChat({ project, onClose }: { project: string; onClose: () => void }) {
   const [draft, setDraft] = useState('')
+  const [loadingHistory, setLoadingHistory] = useState(true)
 
   const { messages, sendMessage, status, error, setMessages } = useChat({
-    // Restaura la conversación persistida del proyecto (sobrevive cierre del
-    // panel y recargas del navegador).
-    messages: loadHistory(project),
     transport: new DefaultChatTransport({
       api: '/api/agent/chat',
       body: { project },
@@ -43,14 +28,20 @@ export function AIChat({ project, onClose }: { project: string; onClose: () => v
   const isLoading = status === 'streaming' || status === 'submitted'
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // Persiste la conversación por proyecto en cada cambio.
+  // Carga el historial persistido en el server (SQLite del workspace): sobrevive
+  // recargas, cierre del panel y cambios de navegador/dispositivo.
   useEffect(() => {
-    try {
-      localStorage.setItem(storeKey(project), JSON.stringify(messages))
-    } catch {
-      /* noop */
-    }
-  }, [messages, project])
+    let cancelled = false
+    setLoadingHistory(true)
+    fetch(`/api/agent/history?project=${encodeURIComponent(project)}`)
+      .then((r) => r.json())
+      .then((data: { messages?: UIMessage[] }) => {
+        if (!cancelled && Array.isArray(data.messages)) setMessages(data.messages)
+      })
+      .catch(() => { /* sin historial */ })
+      .finally(() => { if (!cancelled) setLoadingHistory(false) })
+    return () => { cancelled = true }
+  }, [project, setMessages])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -65,15 +56,25 @@ export function AIChat({ project, onClose }: { project: string; onClose: () => v
 
   const clearChat = () => {
     setMessages([])
-    try { localStorage.removeItem(storeKey(project)) } catch { /* noop */ }
+    fetch(`/api/agent/history?project=${encodeURIComponent(project)}`, { method: 'DELETE' })
+      .catch(() => { /* noop */ })
   }
 
-  // El último mensaje es del asistente y aún no tiene contenido visible → "pensando".
+  // Indicador "trabajando…". Gemini entrega cada tool-call (p. ej. write_file con
+  // todo el contenido del archivo) SOLO cuando termina de generarlo: durante esos
+  // segundos no hay ningún paso con spinner y la UI parecería congelada. Mostramos
+  // los puntos siempre que esté cargando y NO haya ya un paso activo (con su propio
+  // spinner) ni texto streameando en la cola.
   const last = messages[messages.length - 1]
-  const lastHasContent =
-    last?.role === 'assistant' &&
-    last.parts.some((p) => (p.type === 'text' && p.text) || p.type.startsWith('tool-') || p.type === 'dynamic-tool')
-  const showThinking = isLoading && (!last || last.role === 'user' || !lastHasContent)
+  const lastParts = last?.role === 'assistant' ? last.parts : []
+  const toolRunning = lastParts.some((p) => {
+    const isTool = p.type.startsWith('tool-') || p.type === 'dynamic-tool'
+    const state = (p as { state?: string }).state
+    return isTool && state !== 'output-available' && state !== 'output-error'
+  })
+  const tail = lastParts[lastParts.length - 1]
+  const tailTextStreaming = tail?.type === 'text' && !!(tail as { text?: string }).text
+  const showThinking = isLoading && !toolRunning && !tailTextStreaming
 
   return (
     <div className="ws-ai-chat">
@@ -87,7 +88,7 @@ export function AIChat({ project, onClose }: { project: string; onClose: () => v
       </div>
 
       <div className="ws-ai-messages">
-        {messages.length === 0 && !isLoading && (
+        {messages.length === 0 && !isLoading && !loadingHistory && (
           <div className="ws-ai-empty">
             ✦ ¿En qué puedo ayudarte con <strong>{project}</strong>?
           </div>
@@ -117,12 +118,13 @@ export function AIChat({ project, onClose }: { project: string; onClose: () => v
                 const label = TOOL_LABELS[name] ?? `⚙ ${name}`
                 const input = anyPart.input
                 const detail = input?.path ?? input?.dir ?? input?.message ?? ''
-                const done = anyPart.state === 'output-available' || anyPart.state === 'output-error'
+                const failed = anyPart.state === 'output-error'
+                const done = anyPart.state === 'output-available' || failed
                 return (
-                  <div key={i} className={`ws-ai-tool ${done ? 'done' : 'running'}`}>
+                  <div key={i} className={`ws-ai-tool ${done ? 'done' : 'running'}${failed ? ' failed' : ''}`}>
+                    <span className="ws-ai-tool-icon">{!done ? <span className="ws-ai-tool-spin" /> : failed ? '✕' : '✓'}</span>
                     <span className="ws-ai-tool-label">{label}</span>
                     {detail ? <code className="ws-ai-tool-detail">{String(detail)}</code> : null}
-                    {!done && <span className="ws-ai-tool-spin" />}
                   </div>
                 )
               }

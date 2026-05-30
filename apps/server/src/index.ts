@@ -16,6 +16,16 @@ import { webRoot, webDist, projectsDir } from './paths.js'
 import { startTerminalServer, handleTerminalUpgrade, stopTerminals } from './terminal.js'
 import { stopAllApps, appPort } from './apprunner.js'
 
+// Carga variables desde un .env local (gitignoreado) para desarrollo: la key de
+// Gemini y cualquier override. En prod las inyecta Dokploy y este archivo no existe.
+for (const envFile of ['.env', '../../.env']) {
+  try {
+    process.loadEnvFile(resolve(process.cwd(), envFile))
+  } catch {
+    /* no existe → se ignora */
+  }
+}
+
 const PORT = Number(process.env.PORT ?? 3000)
 const isProd = process.env.NODE_ENV === 'production'
 

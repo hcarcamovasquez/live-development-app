@@ -24,6 +24,17 @@ db.exec(`
   )
 `)
 
+// Historial del chat ✦ AI por proyecto (serverside: sobrevive recargas y cambios
+// de navegador/dispositivo). Guardamos el array de mensajes UI serializado en una
+// sola fila por slug; se reemplaza al terminar cada turno del agente.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS chat_history (
+    slug       TEXT PRIMARY KEY,
+    messages   TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )
+`)
+
 export type ProjectRow = {
   id: number
   name: string
@@ -55,4 +66,32 @@ export function insertProjectRow(name: string, slug: string): ProjectRow {
 
 export function deleteProjectRow(slug: string): void {
   db.prepare('DELETE FROM projects WHERE slug = ?').run(slug)
+  db.prepare('DELETE FROM chat_history WHERE slug = ?').run(slug)
+}
+
+/** Devuelve el historial del chat IA del proyecto (array de mensajes UI). */
+export function getChatHistory(slug: string): unknown[] {
+  const row = db.prepare('SELECT messages FROM chat_history WHERE slug = ?').get(slug) as
+    | { messages: string }
+    | undefined
+  if (!row) return []
+  try {
+    const arr = JSON.parse(row.messages)
+    return Array.isArray(arr) ? arr : []
+  } catch {
+    return []
+  }
+}
+
+/** Reemplaza el historial del chat IA del proyecto. */
+export function saveChatHistory(slug: string, messages: unknown[]): void {
+  db.prepare(
+    `INSERT INTO chat_history (slug, messages, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(slug) DO UPDATE SET messages = excluded.messages, updated_at = excluded.updated_at`,
+  ).run(slug, JSON.stringify(messages), new Date().toISOString())
+}
+
+/** Borra el historial del chat IA del proyecto. */
+export function clearChatHistory(slug: string): void {
+  db.prepare('DELETE FROM chat_history WHERE slug = ?').run(slug)
 }

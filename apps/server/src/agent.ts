@@ -1,10 +1,10 @@
 import { Hono } from 'hono'
-import { streamText, tool, convertToModelMessages, stepCountIs } from 'ai'
+import { streamText, tool, convertToModelMessages, stepCountIs, type UIMessage } from 'ai'
 import { google } from '@ai-sdk/google'
 import { z } from 'zod'
 import { readFile, writeFile, readdir, rm, mkdir } from 'node:fs/promises'
 import { resolve, relative, isAbsolute, dirname } from 'node:path'
-import { getProjectRow } from './db.js'
+import { getProjectRow, getChatHistory, saveChatHistory, clearChatHistory } from './db.js'
 import { projectPath, slug } from './projects.js'
 import { statusOf, commit } from './git.js'
 import { runApp, stopApp, appState } from './apprunner.js'
@@ -170,5 +170,32 @@ ${DESIGN_GUIDE}`,
     tools: tools(project),
   })
 
-  return result.toUIMessageStreamResponse()
+  // Persistencia serverside: al terminar el turno, guardamos el historial completo
+  // (mensajes originales + respuesta del asistente) en el SQLite del workspace.
+  return result.toUIMessageStreamResponse({
+    originalMessages: messages as UIMessage[],
+    onFinish: ({ messages: finalMessages }) => {
+      try {
+        saveChatHistory(s, finalMessages as unknown[])
+      } catch {
+        /* noop */
+      }
+    },
+  })
+})
+
+// Historial del chat (serverside). El cliente lo carga al abrir el panel.
+agentApi.get('/history', (c) => {
+  const project = c.req.query('project') ?? ''
+  const s = slug(project)
+  if (!s || !getProjectRow(s)) return c.json({ messages: [] })
+  return c.json({ messages: getChatHistory(s) })
+})
+
+// Borra el historial del chat (botón "nueva conversación").
+agentApi.delete('/history', (c) => {
+  const project = c.req.query('project') ?? ''
+  const s = slug(project)
+  if (s) clearChatHistory(s)
+  return c.json({ ok: true })
 })
