@@ -3,8 +3,8 @@ import { config, assertDokployConfig } from './config.js'
 
 /**
  * Cliente de la API de Dokploy (REST sobre /api, header x-api-key).
- * NOTA: los nombres/campos exactos pueden variar según la versión de Dokploy;
- * confírmalos en <DOKPLOY_URL>/api/openapi.json. Cada paso lanza con contexto.
+ * Los cuerpos siguen el OpenAPI de la instancia (v0.29.x): varios campos son
+ * "required" aunque admitan null — hay que enviarlos o devuelve 400 (Zod).
  */
 async function post<T = unknown>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${config.dokployUrl}/api/${path}`, {
@@ -29,32 +29,41 @@ export type CreateResult = { applicationId: string; url: string }
 export async function createAndDeploy(name: string, slug: string): Promise<CreateResult> {
   assertDokployConfig()
 
-  // 1) Crear la aplicación
+  // 1) Crear la aplicación (required: name, environmentId)
   const created = await post<{ applicationId: string }>('application.create', {
     name,
     appName: `ws-${slug}`,
+    description: null,
     environmentId: config.environmentId,
-    ...(config.serverId ? { serverId: config.serverId } : {}),
+    serverId: config.serverId || null,
   })
   const applicationId = created.applicationId
   if (!applicationId) throw new Error('Dokploy no devolvió applicationId')
 
-  // 2) Fuente git (el editor)
+  // 2) Fuente git (el editor). required: applicationId, customGitBuildPath,
+  //    customGitUrl, watchPaths, customGitBranch
   await post('application.saveGitProvider', {
     applicationId,
     customGitUrl: config.editorRepoUrl,
     customGitBranch: config.editorBranch,
     customGitBuildPath: '/',
+    watchPaths: null,
   })
 
-  // 3) Build por Dockerfile
+  // 3) Build por Dockerfile. required: applicationId, buildType, dockerfile,
+  //    dockerContextPath, dockerBuildStage, herokuVersion, railpackVersion
   await post('application.saveBuildType', {
     applicationId,
     buildType: 'dockerfile',
     dockerfile: config.editorDockerfile,
+    dockerContextPath: null,
+    dockerBuildStage: null,
+    herokuVersion: null,
+    railpackVersion: null,
   })
 
-  // 4) Variables de entorno del editor (persistencia en el volumen /data)
+  // 4) Variables de entorno del editor. required: applicationId, env,
+  //    buildArgs, buildSecrets, createEnvFile
   const env = [
     'NODE_ENV=production',
     `PORT=${config.editorPort}`,
@@ -62,9 +71,25 @@ export async function createAndDeploy(name: string, slug: string): Promise<Creat
     'DB_PATH=/data/registry.db',
     `WORKSPACE_ID=${slug}`,
   ].join('\n')
-  await post('application.saveEnvironment', { applicationId, env })
+  await post('application.saveEnvironment', {
+    applicationId,
+    env,
+    buildArgs: null,
+    buildSecrets: null,
+    createEnvFile: false,
+  })
 
-  // 5) Dominio (aleatorio) apuntando al puerto del editor
+  // 5) Volumen persistente montado en /data (proyectos + SQLite del workspace).
+  //    required: type, mountPath, serviceId
+  await post('mounts.create', {
+    type: 'volume',
+    volumeName: `ws-${slug}-data`,
+    mountPath: '/data',
+    serviceType: 'application',
+    serviceId: applicationId,
+  })
+
+  // 6) Dominio (aleatorio) apuntando al puerto del editor. required: host
   const host = randomHost(slug)
   await post('domain.create', {
     applicationId,
@@ -72,9 +97,10 @@ export async function createAndDeploy(name: string, slug: string): Promise<Creat
     port: config.editorPort,
     https: true,
     certificateType: 'letsencrypt',
+    domainType: 'application',
   })
 
-  // 6) Desplegar
+  // 7) Desplegar
   await post('application.deploy', { applicationId })
 
   return { applicationId, url: `https://${host}` }

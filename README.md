@@ -124,8 +124,10 @@ y edita `src/UserApp.tsx`: el preview se actualiza en caliente.
 | `PORT`              | `3000`                                       | Puerto del editor                  |
 | `PROJECTS_DIR`      | `~/.live-development-app/projects`           | Dónde se persisten los proyectos   |
 | `PREVIEW_PORT_BASE` | `5174`                                       | Puerto base de los dev servers     |
-| `TERMINAL_PORT`     | `3001`                                       | Puerto del WebSocket de terminales |
 | `DB_PATH`           | `$PROJECTS_DIR/registry.db`                  | Ruta de la base SQLite             |
+
+> El terminal y el preview van por el **mismo puerto** del editor (`/ws/terminal` y
+> `/preview/<slug>/`), así que ya no hay un `TERMINAL_PORT` separado.
 
 ## API
 
