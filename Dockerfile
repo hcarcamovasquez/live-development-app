@@ -14,10 +14,14 @@ RUN pnpm build
 
 # ---- runtime ----
 FROM node:24-bookworm-slim AS runtime
+# gosu para bajar privilegios a `dev` desde el entrypoint; git para simple-git.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      git ca-certificates && rm -rf /var/lib/apt/lists/*
-ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
-RUN corepack enable
+      git ca-certificates gosu && rm -rf /var/lib/apt/lists/*
+# pnpm global (en /usr/local/bin, usable por cualquier usuario) en vez de corepack
+# por-usuario, para que el usuario `dev` no tenga que descargarlo en runtime.
+RUN npm install -g pnpm@11.1.1
+# Usuario no-root: el server y las terminales corren como `dev` (no root).
+RUN useradd -m -u 1000 -s /bin/bash dev
 WORKDIR /app
 
 # Dependencias (incluye node-pty con su binario nativo) y artefactos compilados.
@@ -31,8 +35,9 @@ COPY --from=builder /app/apps/server/dist ./apps/server/dist
 COPY --from=builder /app/apps/server/package.json ./apps/server/package.json
 COPY --from=builder /app/apps/server/node_modules ./apps/server/node_modules
 
-# Restaura el bit de ejecución del spawn-helper de node-pty.
+# Restaura el bit de ejecución del spawn-helper de node-pty y del entrypoint.
 RUN node scripts/fix-pty.mjs || true
+RUN chmod +x scripts/docker-entrypoint.sh
 
 ENV NODE_ENV=production \
     PORT=3000 \
@@ -40,9 +45,13 @@ ENV NODE_ENV=production \
     DB_PATH=/data/registry.db \
     NODE_OPTIONS=--disable-warning=ExperimentalWarning \
     PREVIEW_HMR_CLIENT_PORT=443 \
-    PREVIEW_HMR_PROTOCOL=wss
+    PREVIEW_HMR_PROTOCOL=wss \
+    HOME=/home/dev \
+    SHELL=/bin/bash
 
 # Persistencia de los proyectos del workspace (Dokploy monta un volumen aquí).
 VOLUME /data
 EXPOSE 3000
+# El entrypoint (root) prepara /data y hace exec gosu dev → todo corre como `dev`.
+ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
 CMD ["node", "apps/server/dist/index.js"]
