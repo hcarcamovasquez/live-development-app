@@ -11,6 +11,30 @@ import { runApp, stopApp, appState } from './apprunner.js'
 
 export const agentApi = new Hono()
 
+// Guía de diseño frontend (basada en la skill frontend-design de Anthropic).
+// Se inyecta en el system prompt para que la UI generada evite la estética
+// genérica de IA y tenga una dirección estética intencional.
+const DESIGN_GUIDE = `
+Cuando construyas o modifiques interfaz (UI), aplica diseño de alta calidad y
+evita la estética genérica de "IA":
+- Dirección estética: comprométete con un tono claro y deliberado (minimalista
+  refinado, brutalista, editorial, retro-futurista, lujoso, etc.). Intencionalidad
+  sobre intensidad.
+- Tipografía: fuentes distintivas y con carácter; evita Arial, Inter, Roboto y
+  fuentes de sistema. Empareja una display expresiva con una de texto legible.
+- Color: paleta cohesiva con variables CSS; colores dominantes con acentos
+  marcados, no paletas tímidas y uniformes. EVITA gradientes morados sobre blanco.
+- Movimiento: micro-interacciones y una carga de página orquestada (reveals
+  escalonados con animation-delay). CSS puro cuando sea posible.
+- Composición: layouts inesperados, asimetría, superposición, espacio negativo
+  generoso o densidad controlada; rompe la rejilla con intención.
+- Fondo y detalle: atmósfera y profundidad (mallas de gradiente, texturas de
+  ruido, patrones geométricos, sombras dramáticas, grano) en vez de colores planos.
+- NUNCA: layouts y componentes predecibles, esquemas cliché, diseño cortado con
+  molde sin carácter propio del contexto.
+- Ajusta la complejidad del código a la visión: maximalismo => código elaborado
+  con animaciones; minimalismo => precisión y atención al espaciado/tipografía.`
+
 function base(project: string): string {
   const s = slug(project)
   if (!s || !getProjectRow(s)) throw new Error('Proyecto no encontrado')
@@ -137,7 +161,8 @@ Reglas:
 - Escribe el contenido COMPLETO del archivo al usar write_file (nunca parcial).
 - El archivo principal de la app es src/UserApp.tsx.
 - Si el usuario pide cambios en múltiples archivos, hazlos todos.
-- Responde siempre en el mismo idioma que el usuario.`,
+- Responde siempre en el mismo idioma que el usuario.
+${DESIGN_GUIDE}`,
     messages: await convertToModelMessages(messages),
     stopWhen: stepCountIs(15),
     tools: tools(project),
