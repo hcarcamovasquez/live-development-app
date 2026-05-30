@@ -78,7 +78,21 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
   const [showTerminal, setShowTerminal] = useState(false)
   const [terminalPort, setTerminalPort] = useState(0)
   const [leftView, setLeftView] = useState<'files' | 'git'>('files')
+  const [leftOpen, setLeftOpen] = useState(() => localStorage.getItem('ide.leftOpen') !== '0')
   const [diff, setDiff] = useState<Diff | null>(null)
+
+  useEffect(() => {
+    localStorage.setItem('ide.leftOpen', leftOpen ? '1' : '0')
+  }, [leftOpen])
+
+  // Clic en un icono: abre esa vista; clic de nuevo en la activa la cierra.
+  const toggleLeft = (view: 'files' | 'git') => {
+    if (leftOpen && leftView === view) setLeftOpen(false)
+    else {
+      setLeftView(view)
+      setLeftOpen(true)
+    }
+  }
   const [showPreview, setShowPreview] = useState(() => localStorage.getItem('ide.showPreview') !== '0')
   const [fullscreen, setFullscreen] = useState(false)
 
@@ -329,48 +343,54 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
       <div
         className="ws-body"
         style={{
-          gridTemplateColumns: showPreview
-            ? `46px ${explorerW}px 5px minmax(0, 1fr) 5px ${previewW}px`
-            : `46px ${explorerW}px 5px minmax(0, 1fr)`,
+          gridTemplateColumns: [
+            '46px',
+            ...(leftOpen ? [`${explorerW}px`, '5px'] : []),
+            'minmax(0, 1fr)',
+            ...(showPreview ? ['5px', `${previewW}px`] : []),
+          ].join(' '),
         }}
       >
         <div className="ws-rail">
           <button
-            className={`ws-rail-btn ${leftView === 'files' ? 'on' : ''}`}
+            className={`ws-rail-btn ${leftOpen && leftView === 'files' ? 'on' : ''}`}
             title="Project"
-            onClick={() => setLeftView('files')}
+            onClick={() => toggleLeft('files')}
           >
             ▤
           </button>
           <button
-            className={`ws-rail-btn ${leftView === 'git' ? 'on' : ''}`}
+            className={`ws-rail-btn ${leftOpen && leftView === 'git' ? 'on' : ''}`}
             title="Source Control"
-            onClick={() => setLeftView('git')}
+            onClick={() => toggleLeft('git')}
           >
             ⎇
           </button>
         </div>
 
-        {leftView === 'files' ? (
-          <FileExplorer
-            project={project}
-            tree={tree}
-            active={active}
-            dirtyPaths={dirtyPaths}
-            onOpen={openFile}
-            onNewFile={newFile}
-            onDeleteFile={setDelFile}
-          />
-        ) : (
-          <GitPanel
-            project={project}
-            activePath={diff?.path ?? ''}
-            onOpenDiff={openDiff}
-            onReloadFile={reloadFile}
-          />
+        {leftOpen && (
+          <>
+            {leftView === 'files' ? (
+              <FileExplorer
+                project={project}
+                tree={tree}
+                active={active}
+                dirtyPaths={dirtyPaths}
+                onOpen={openFile}
+                onNewFile={newFile}
+                onDeleteFile={setDelFile}
+              />
+            ) : (
+              <GitPanel
+                project={project}
+                activePath={diff?.path ?? ''}
+                onOpenDiff={openDiff}
+                onReloadFile={reloadFile}
+              />
+            )}
+            <div className="ws-split-v" onPointerDown={startDrag('explorer')} />
+          </>
         )}
-
-        <div className="ws-split-v" onPointerDown={startDrag('explorer')} />
 
         <div className="ws-editor-area">
           {diff ? (
