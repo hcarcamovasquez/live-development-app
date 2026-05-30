@@ -30,6 +30,9 @@ API. El registro de proyectos se guarda en **SQLite** del lado del servidor.
   `pnpm install` (su propio `node_modules`) + alta en SQLite.
 - **Abrir**: arranca (bajo demanda) el dev server propio del proyecto en un puerto
   libre y devuelve su URL; el editor lo embebe en un iframe.
+- **Paneles**: explorador, editor, preview y terminal son **redimensionables**
+  (arrastrando los divisores) y el **preview se puede ocultar/mostrar** (el editor
+  se expande); los tamaños y visibilidad se recuerdan en localStorage.
 - **Editar**: el editor tiene un **explorador de archivos** (árbol del proyecto) para
   abrir/crear/borrar archivos; cada uno se edita en Monaco con su lenguaje según la
   extensión. Guardar → `POST /api/file` → el servidor escribe el archivo → el Vite

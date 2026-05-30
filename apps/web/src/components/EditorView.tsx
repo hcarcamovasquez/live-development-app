@@ -60,6 +60,11 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
   const [terminalPort, setTerminalPort] = useState(0)
   const [leftView, setLeftView] = useState<'files' | 'git'>('files')
   const [diff, setDiff] = useState<Diff | null>(null)
+  const [showPreview, setShowPreview] = useState(() => localStorage.getItem('ide.showPreview') !== '0')
+
+  useEffect(() => {
+    localStorage.setItem('ide.showPreview', showPreview ? '1' : '0')
+  }, [showPreview])
 
   const openDiff = (path: string) => {
     fetch(`/api/git/diff${q}&path=${encodeURIComponent(path)}`)
@@ -273,16 +278,27 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
         <span className="ws-sep">›</span>
         <span className="ws-dim">live·dev</span>
         <span className="ws-spacer" />
-        <button className="ws-run" onClick={() => setPreviewNonce((n) => n + 1)} title="Recargar preview">
-          <span className="ws-play" /> Preview
+        <button
+          className={`ws-run ghost ${showPreview ? 'on' : ''}`}
+          onClick={() => setShowPreview((v) => !v)}
+          title={showPreview ? 'Ocultar preview' : 'Mostrar preview'}
+        >
+          <span className="ws-eye" /> {showPreview ? 'Ocultar' : 'Preview'}
         </button>
+        {showPreview && (
+          <button className="ws-run" onClick={() => setPreviewNonce((n) => n + 1)} title="Recargar preview">
+            <span className="ws-play" /> Recargar
+          </button>
+        )}
       </div>
 
       {/* Cuerpo: Project | Editor | Preview (con divisores redimensionables) */}
       <div
         className="ws-body"
         style={{
-          gridTemplateColumns: `46px ${explorerW}px 5px minmax(0, 1fr) 5px ${previewW}px`,
+          gridTemplateColumns: showPreview
+            ? `46px ${explorerW}px 5px minmax(0, 1fr) 5px ${previewW}px`
+            : `46px ${explorerW}px 5px minmax(0, 1fr)`,
         }}
       >
         <div className="ws-rail">
@@ -405,9 +421,16 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
           )}
         </div>
 
-        <div className="ws-split-v" onPointerDown={startDrag('preview')} />
-
-        <Preview url={previewUrl} nonce={previewNonce} onReload={() => setPreviewNonce((n) => n + 1)} />
+        {showPreview && (
+          <>
+            <div className="ws-split-v" onPointerDown={startDrag('preview')} />
+            <Preview
+              url={previewUrl}
+              nonce={previewNonce}
+              onReload={() => setPreviewNonce((n) => n + 1)}
+            />
+          </>
+        )}
       </div>
 
       {/* Terminal integrada (PTY del proyecto), redimensionable en alto */}
@@ -440,10 +463,22 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
           <span className="ws-term-icon">›_</span> Terminal
         </button>
         <span className="ws-status-divider" />
-        <span className={`ws-status-conn ${previewUrl ? 'up' : ''}`}>
-          <span className="ws-conn-dot" />
-          {previewUrl ? `preview ${previewUrl.replace('http://', '')}` : 'iniciando…'}
-        </span>
+        <button
+          className={`ws-tool-toggle ${showPreview ? 'on' : ''}`}
+          onClick={() => setShowPreview((v) => !v)}
+          title="Preview (derecha)"
+        >
+          <span className="ws-eye" /> Preview
+        </button>
+        {showPreview && (
+          <>
+            <span className="ws-status-divider" />
+            <span className={`ws-status-conn ${previewUrl ? 'up' : ''}`}>
+              <span className="ws-conn-dot" />
+              {previewUrl ? `preview ${previewUrl.replace('http://', '')}` : 'iniciando…'}
+            </span>
+          </>
+        )}
         {saveFlash && <span className="ws-saved">✓ guardado · hot reload</span>}
         <span className="ws-spacer" />
         {active && (

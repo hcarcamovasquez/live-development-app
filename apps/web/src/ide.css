@@ -108,6 +108,24 @@
   font-weight: 700;
   font-size: 11px;
 }
+/* Ícono de "panel derecho" (toggle del preview) */
+.ws-eye {
+  position: relative;
+  display: inline-block;
+  width: 14px;
+  height: 11px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+}
+.ws-eye::after {
+  content: '';
+  position: absolute;
+  top: -1.5px;
+  bottom: -1.5px;
+  right: 4px;
+  width: 1.5px;
+  background: currentColor;
+}
 
 /* ---------- Body grid ---------- */
 .ws-body {
