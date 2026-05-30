@@ -1,0 +1,30 @@
+# Manager de workspaces. Súbelo a Dokploy como servicio "Compose".
+# El manager despliega cada workspace (editor) vía la API de Dokploy.
+services:
+  manager:
+    build:
+      context: .
+      dockerfile: apps/manager/Dockerfile
+    environment:
+      PORT: 4000
+      DB_PATH: /data/manager.db
+      # --- Dokploy ---
+      DOKPLOY_URL: ${DOKPLOY_URL}
+      DOKPLOY_API_KEY: ${DOKPLOY_API_KEY}
+      DOKPLOY_ENVIRONMENT_ID: ${DOKPLOY_ENVIRONMENT_ID}
+      DOKPLOY_SERVER_ID: ${DOKPLOY_SERVER_ID:-}
+      # --- Editor (Dokploy lo construye desde git) ---
+      EDITOR_REPO_URL: ${EDITOR_REPO_URL}
+      EDITOR_BRANCH: ${EDITOR_BRANCH:-main}
+      EDITOR_DOCKERFILE_PATH: ${EDITOR_DOCKERFILE_PATH:-Dockerfile}
+      EDITOR_PORT: ${EDITOR_PORT:-3000}
+      # Sufijo de dominio para los workspaces (tu wildcard o <ip>.sslip.io)
+      WORKSPACE_DOMAIN_SUFFIX: ${WORKSPACE_DOMAIN_SUFFIX:-}
+    volumes:
+      - manager-data:/data
+    ports:
+      - '4000:4000'
+    restart: unless-stopped
+
+volumes:
+  manager-data:

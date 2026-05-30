@@ -1,0 +1,27 @@
+{
+  "name": "manager",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "cross-env NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx watch --clear-screen=false src/server/index.ts",
+    "build": "vite build && tsc -p tsconfig.server.json",
+    "start": "cross-env NODE_ENV=production NODE_OPTIONS=--disable-warning=ExperimentalWarning node dist/server/index.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "hono": "^4.6.14",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "cross-env": "^7.0.3",
+    "tsx": "^4.19.2",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.12"
+  }
+}

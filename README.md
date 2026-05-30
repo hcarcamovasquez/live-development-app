@@ -9,6 +9,28 @@ Cada proyecto es una app Vite **completa e independiente** (sus archivos, su pro
 fuera del repo. El editor solo la muestra en un **iframe** y le escribe archivos vía
 API. El registro de proyectos se guarda en **SQLite** del lado del servidor.
 
+## Despliegue (manager + Dokploy)
+
+Además del editor, hay un **manager** (`apps/manager`, sin auth) que lista/crea
+**workspaces**: cada workspace se despliega **bajo demanda como un contenedor propio
+del editor** vía la **API de Dokploy** (construido desde este repo con `Dockerfile`).
+
+- **Editor** (`Dockerfile`, raíz): imagen de un workspace; un solo puerto
+  (`PORT`, 3000) — terminal por `/ws/terminal` y preview por `/preview/<slug>/`
+  (proxy mismo origen). Volumen `/data` (proyectos + SQLite). Requiere Node 24.
+- **Manager** (`apps/manager/Dockerfile` + `docker-compose.yml`): se sube a Dokploy
+  como Compose. Crea cada workspace con `application.create` → `saveGitProvider`
+  (este repo) → `saveBuildType` (dockerfile) → `saveEnvironment` → `domain.create`
+  (dominio aleatorio) → `application.deploy`, y muestra la URL resultante.
+- Config por env (ver `.env.example`): `DOKPLOY_URL`, `DOKPLOY_API_KEY`,
+  `DOKPLOY_ENVIRONMENT_ID`, `EDITOR_REPO_URL`, `WORKSPACE_DOMAIN_SUFFIX`, …
+- Prerrequisito: subir este repo a un **git remoto** accesible por Dokploy.
+
+```bash
+docker build -t livedev-editor .                 # imagen del editor (un workspace)
+docker compose up   # manager local (con .env) → http://localhost:4000
+```
+
 ## Arquitectura
 
 ```
