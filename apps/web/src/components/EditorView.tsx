@@ -554,7 +554,15 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
             <span className="ws-status-divider" />
             <span className={`ws-status-conn ${previewUrl ? 'up' : ''}`}>
               <span className="ws-conn-dot" />
-              {previewUrl ? `preview ${previewUrl.replace('http://', '')}` : 'iniciando…'}
+              {previewUrl
+                ? `preview ${previewUrl.replace('http://', '')}`
+                : appStatus === 'installing'
+                  ? 'instalando…'
+                  : appStatus === 'starting'
+                    ? 'arrancando…'
+                    : appStatus === 'error'
+                      ? 'error'
+                      : 'app detenida'}
             </span>
           </>
         )}
