@@ -92,6 +92,21 @@ body::before {
 .status.error { color: var(--danger); }
 .status.error .dot { background: var(--danger); }
 
+/* Tarjeta en despliegue: borde ámbar + barra de progreso indeterminada arriba. */
+.card.deploying { position: relative; overflow: hidden; border-color: rgba(214,191,85,0.4); }
+.card.deploying::after {
+  content: ''; position: absolute; left: 0; top: 0; height: 2px; width: 35%;
+  background: linear-gradient(90deg, transparent, #d6bf55, transparent);
+  animation: indeterminate 1.3s ease-in-out infinite;
+}
+.deploying-foot { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #d6bf55; }
+.mini-spin {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid rgba(214,191,85,0.25); border-top-color: #d6bf55;
+  animation: spin 0.7s linear infinite;
+}
+.open.error { color: var(--danger); border-color: rgba(255,92,92,0.35); cursor: default; }
+
 .overlay { position: fixed; inset: 0; z-index: 50; background: rgba(5,6,9,0.72); backdrop-filter: blur(6px); display: grid; place-items: center; padding: 24px; animation: fade 0.18s ease; }
 .modal { width: 100%; max-width: 460px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 16px; padding: 22px; box-shadow: 0 40px 90px -30px #000; animation: pop 0.22s cubic-bezier(0.2,0.9,0.3,1.2); }
 .modal.danger { border-color: rgba(255,92,92,0.35); }
@@ -119,5 +134,6 @@ body::before {
 @keyframes rise { to { opacity: 1; transform: translateY(0); } }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(214,191,85,0.5); } 70% { box-shadow: 0 0 0 6px rgba(214,191,85,0); } 100% { box-shadow: 0 0 0 0 rgba(214,191,85,0); } }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes indeterminate { 0% { transform: translateX(-120%); } 100% { transform: translateX(400%); } }
 @keyframes fade { from { opacity: 0; } }
 @keyframes pop { from { opacity: 0; transform: translateY(10px) scale(0.97); } }

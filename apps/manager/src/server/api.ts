@@ -21,14 +21,19 @@ function slug(name: string): string {
     .slice(0, 40)
 }
 
-/** Sondea la URL del workspace; si responde, está activo. */
+/**
+ * Sondea la URL del workspace; solo está "arriba" si el editor responde 2xx/3xx.
+ * Durante el build, Traefik devuelve 404/502/503 (y mientras se emite el cert TLS
+ * el fetch falla) → se mantiene en 'building' hasta que sirve de verdad. Así la UI
+ * no ofrece el enlace antes de tiempo (evita el 404 al hacer clic).
+ */
 async function isUp(url: string): Promise<boolean> {
   try {
     const ctrl = new AbortController()
     const t = setTimeout(() => ctrl.abort(), 2500)
     const res = await fetch(url, { method: 'GET', signal: ctrl.signal, redirect: 'manual' })
     clearTimeout(t)
-    return res.status > 0 && res.status < 500
+    return res.status >= 200 && res.status < 400
   } catch {
     return false
   }

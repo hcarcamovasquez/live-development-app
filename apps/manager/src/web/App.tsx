@@ -75,8 +75,14 @@ export function App() {
           </div>
         ) : (
           <ul className="grid">
-            {items.map((w, i) => (
-              <li key={w.id} className="card" style={{ animationDelay: `${i * 60}ms` }}>
+            {items.map((w, i) => {
+              const deploying = w.status === 'creating' || w.status === 'building'
+              return (
+              <li
+                key={w.id}
+                className={`card${deploying ? ' deploying' : ''}`}
+                style={{ animationDelay: `${i * 60}ms` }}
+              >
                 <div className="card-top">
                   <span className={`status ${w.status}`}>
                     <span className="dot" /> {STATUS[w.status] ?? w.status}
@@ -88,16 +94,21 @@ export function App() {
                 <h2 className="card-name">{w.name}</h2>
                 <code className="slug">/{w.slug}</code>
                 <div className="card-foot">
-                  {w.url ? (
+                  {w.status === 'running' && w.url ? (
                     <a className="open" href={w.url} target="_blank" rel="noreferrer">
                       abrir ↗
                     </a>
+                  ) : w.status === 'error' ? (
+                    <span className="open error">error al desplegar</span>
                   ) : (
-                    <span className="open disabled">{STATUS[w.status] ?? w.status}</span>
+                    <span className="deploying-foot">
+                      <span className="mini-spin" /> desplegando…
+                    </span>
                   )}
                 </div>
               </li>
-            ))}
+              )
+            })}
           </ul>
         )}
       </div>
