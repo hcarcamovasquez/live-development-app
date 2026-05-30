@@ -4,24 +4,26 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 
 /**
- * Dock de terminales. La primera pestaña "App" es especial y NO se puede cerrar:
- * muestra la salida del dev server (install + vite) y se controla con Run/Stop.
- * Las demás son terminales (PTY) normales, persistentes en el servidor.
+ * Panel inferior con dos pestañas al estilo VS Code: "App" y "Terminal".
+ *  - App: salida del dev server (install + vite), controlada con Run/Stop. No PTY.
+ *  - Terminal: una o más shells (PTY) persistentes, con sub-pestañas y "+".
  */
-type TermsState = { ids: number[]; active: number; counter: number } // active 0 = App
-const APP = 0
+type Panel = 'app' | 'terminal'
+type DockState = { panel: Panel; ids: number[]; active: number; counter: number }
 
-function loadTerms(project: string): TermsState {
+function loadDock(project: string): DockState {
   try {
-    const s = JSON.parse(localStorage.getItem(`ide.terms.${project}`) ?? 'null')
-    if (s && Array.isArray(s.ids)) return { ids: s.ids, active: s.active ?? APP, counter: s.counter ?? 0 }
+    const s = JSON.parse(localStorage.getItem(`ide.dock.${project}`) ?? 'null')
+    if (s && Array.isArray(s.ids)) {
+      return { panel: s.panel ?? 'app', ids: s.ids, active: s.active ?? 0, counter: s.counter ?? 0 }
+    }
   } catch {
     /* noop */
   }
-  return { ids: [], active: APP, counter: 0 }
+  return { panel: 'app', ids: [], active: 0, counter: 0 }
 }
-function saveTerms(project: string, s: TermsState) {
-  localStorage.setItem(`ide.terms.${project}`, JSON.stringify(s))
+function saveDock(project: string, s: DockState) {
+  localStorage.setItem(`ide.dock.${project}`, JSON.stringify(s))
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -47,23 +49,30 @@ export function TerminalDock({
   onStop: () => void
   onClose: () => void
 }) {
-  const [state, setState] = useState<TermsState>(() => loadTerms(project))
-  const { ids: terms, active } = state
+  const [st, setSt] = useState<DockState>(() => loadDock(project))
+  const { panel, ids: terms, active } = st
   const killSet = useRef<Set<number>>(new Set())
 
-  useEffect(() => saveTerms(project, state), [project, state])
+  useEffect(() => saveDock(project, st), [project, st])
 
-  const setActive = (id: number) => setState((s) => ({ ...s, active: id }))
+  const showApp = () => setSt((s) => ({ ...s, panel: 'app' }))
+  const showTerminal = () =>
+    setSt((s) =>
+      s.ids.length === 0
+        ? { ...s, panel: 'terminal', ids: [s.counter + 1], active: s.counter + 1, counter: s.counter + 1 }
+        : { ...s, panel: 'terminal' },
+    )
+  const setActive = (id: number) => setSt((s) => ({ ...s, active: id }))
   const addTerm = () =>
-    setState((s) => {
+    setSt((s) => {
       const id = s.counter + 1
-      return { ids: [...s.ids, id], active: id, counter: id }
+      return { ...s, panel: 'terminal', ids: [...s.ids, id], active: id, counter: id }
     })
   const closeTerm = (id: number) => {
     killSet.current.add(id)
-    setState((s) => {
+    setSt((s) => {
       const ids = s.ids.filter((t) => t !== id)
-      return { ...s, ids, active: id === s.active ? APP : s.active }
+      return { ...s, ids, active: id === s.active ? (ids[ids.length - 1] ?? 0) : s.active }
     })
   }
 
@@ -72,51 +81,60 @@ export function TerminalDock({
   return (
     <div className="ws-terminal">
       <div className="ws-term-head">
-        <div className="ws-term-tabs">
-          <button
-            className={`ws-term-tab app ${active === APP ? 'active' : ''}`}
-            onClick={() => setActive(APP)}
-          >
+        {/* Pestañas del panel: App | Terminal */}
+        <div className="ws-panel-tabs">
+          <button className={`ws-panel-tab ${panel === 'app' ? 'active' : ''}`} onClick={showApp}>
             <span className={`ws-app-dot ${appStatus}`} /> App
           </button>
-          {terms.map((id) => (
-            <button
-              key={id}
-              className={`ws-term-tab ${id === active ? 'active' : ''}`}
-              onClick={() => setActive(id)}
-            >
-              <span className="ws-term-icon">›_</span>
-              Local
-              <span
-                className="ws-term-tab-close"
-                title="Cerrar sesión"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  closeTerm(id)
-                }}
-              >
-                ✕
-              </span>
-            </button>
-          ))}
-          <button className="ws-term-add" title="Nueva terminal" onClick={addTerm}>
-            +
+          <button
+            className={`ws-panel-tab ${panel === 'terminal' ? 'active' : ''}`}
+            onClick={showTerminal}
+          >
+            <span className="ws-term-icon">›_</span> Terminal
           </button>
         </div>
 
-        {/* Controles de la app (arriba) */}
-        <div className="ws-app-controls">
-          {busy ? (
-            <button className="ws-app-stop" onClick={onStop} title="Detener app">
-              ■ Stop
+        <span className="ws-head-sep" />
+
+        {panel === 'app' ? (
+          <div className="ws-app-controls">
+            {busy ? (
+              <button className="ws-app-stop" onClick={onStop} title="Detener app">
+                ■ Stop
+              </button>
+            ) : (
+              <button className="ws-app-run" onClick={onRun} title="Instalar y arrancar app">
+                ▶ Run
+              </button>
+            )}
+            <span className="ws-app-status">{STATUS_LABEL[appStatus] ?? appStatus}</span>
+          </div>
+        ) : (
+          <div className="ws-term-tabs">
+            {terms.map((id, i) => (
+              <button
+                key={id}
+                className={`ws-term-tab ${id === active ? 'active' : ''}`}
+                onClick={() => setActive(id)}
+              >
+                Local{i > 0 ? ` (${i + 1})` : ''}
+                <span
+                  className="ws-term-tab-close"
+                  title="Cerrar sesión"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    closeTerm(id)
+                  }}
+                >
+                  ✕
+                </span>
+              </button>
+            ))}
+            <button className="ws-term-add" title="Nueva terminal" onClick={addTerm}>
+              +
             </button>
-          ) : (
-            <button className="ws-app-run" onClick={onRun} title="Instalar y arrancar app">
-              ▶ Run
-            </button>
-          )}
-          <span className="ws-app-status">{STATUS_LABEL[appStatus] ?? appStatus}</span>
-        </div>
+          </div>
+        )}
 
         <span className="ws-spacer" />
         <button className="ws-icon-btn" title="Ocultar panel" onClick={onClose}>
@@ -125,17 +143,18 @@ export function TerminalDock({
       </div>
 
       <div className="ws-term-bodies">
-        {/* Terminal App (output-only) */}
+        {/* App (output-only) */}
         <Term
           key="app"
           wsId="__app__"
+          numId={-1}
           project={project}
           terminalPort={terminalPort}
-          hidden={active !== APP}
+          hidden={panel !== 'app'}
           readOnly
           killSet={killSet.current}
-          numId={APP}
         />
+        {/* Terminales (PTY) */}
         {terms.map((id) => (
           <Term
             key={id}
@@ -143,10 +162,13 @@ export function TerminalDock({
             numId={id}
             project={project}
             terminalPort={terminalPort}
-            hidden={id !== active}
+            hidden={panel !== 'terminal' || id !== active}
             killSet={killSet.current}
           />
         ))}
+        {panel === 'terminal' && terms.length === 0 && (
+          <div className="ws-term-empty">Sin terminales. Pulsa + para abrir una.</div>
+        )}
       </div>
     </div>
   )
@@ -174,7 +196,6 @@ function Term({
 
   useEffect(() => {
     if (!hostRef.current) return
-    let disposed = false
 
     const term = new XTerm({
       fontFamily: "'JetBrains Mono', ui-monospace, monospace",
@@ -232,8 +253,6 @@ function Term({
     ro.observe(hostRef.current)
 
     return () => {
-      disposed = true
-      void disposed
       ro.disconnect()
       dataSub?.dispose()
       if (!readOnly && killSet.has(numId) && ws.readyState === WebSocket.OPEN) {
