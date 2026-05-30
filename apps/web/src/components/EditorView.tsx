@@ -40,8 +40,8 @@ const loadSize = (key: string, fallback: number) => {
 }
 const saveSize = (key: string, v: number) => localStorage.setItem(`ide.${key}`, String(v))
 
-// Sesión por proyecto: pestañas abiertas, archivo activo y estado de la terminal.
-type Session = { tabs: string[]; active: string; terminal: boolean }
+// Sesión por proyecto: pestañas abiertas y archivo activo.
+type Session = { tabs: string[]; active: string }
 const loadSession = (project: string): Session | null => {
   try {
     return JSON.parse(localStorage.getItem(`ide.session.${project}`) ?? 'null')
@@ -197,7 +197,6 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
     const saved = session?.tabs ?? []
     if (saved.length) {
       setTabs(saved)
-      if (session && typeof session.terminal === 'boolean') setShowTerminal(session.terminal)
       openFile(session?.active && saved.includes(session.active) ? session.active : saved[0])
     } else {
       openFile(DEFAULT_FILE)
@@ -258,8 +257,8 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
   // Persiste la sesión (pestañas/activo/terminal) cuando cambia, ya restaurada.
   useEffect(() => {
     if (!restoredRef.current) return
-    saveSession(project, { tabs, active, terminal: showTerminal })
-  }, [project, tabs, active, showTerminal])
+    saveSession(project, { tabs, active })
+  }, [project, tabs, active])
 
   const save = useCallback(async () => {
     const path = activeRef.current
