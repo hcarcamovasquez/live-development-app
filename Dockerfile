@@ -16,10 +16,13 @@ RUN pnpm build
 FROM node:24-bookworm-slim AS runtime
 # gosu para bajar privilegios a `dev` desde el entrypoint; git para simple-git.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      git ca-certificates gosu && rm -rf /var/lib/apt/lists/*
+      git ca-certificates gosu curl && rm -rf /var/lib/apt/lists/*
 # pnpm global (en /usr/local/bin, usable por cualquier usuario) en vez de corepack
 # por-usuario, para que el usuario `dev` no tenga que descargarlo en runtime.
 RUN npm install -g pnpm@11.1.1
+# OpenCode: agente IA de coding (provider-agnóstico: Claude, OpenAI, Gemini…).
+# Binario precompilado instalado en /usr/local/bin para todos los usuarios.
+RUN curl -fsSL https://opencode.ai/install | bash -s -- -b /usr/local/bin
 # El server y las terminales corren como el usuario `node` (uid 1000, ya existe
 # en la imagen base), no como root.
 WORKDIR /app
@@ -47,7 +50,10 @@ ENV NODE_ENV=production \
     PREVIEW_HMR_CLIENT_PORT=443 \
     PREVIEW_HMR_PROTOCOL=wss \
     HOME=/home/node \
-    SHELL=/bin/bash
+    SHELL=/bin/bash \
+    # Keys del proveedor LLM para OpenCode (vacías; se sobreescriben en Dokploy).
+    ANTHROPIC_API_KEY="" \
+    OPENAI_API_KEY=""
 
 # Persistencia de los proyectos del workspace, bajo el home del usuario `node`
 # (Dokploy monta el volumen aquí). La terminal abre dentro de este árbol.

@@ -84,12 +84,16 @@ export async function createAndDeploy(name: string, slug: string): Promise<Creat
 
   // 4) Variables de entorno del editor. required: applicationId, env,
   //    buildArgs, buildSecrets, createEnvFile
+  // LLM API keys para OpenCode (vacías por defecto; el usuario las configura
+  // en Dokploy → Environment del workspace según el proveedor que quiera usar).
   const env = [
     'NODE_ENV=production',
     `PORT=${config.editorPort}`,
     'PROJECTS_DIR=/home/node/projects',
     'DB_PATH=/home/node/projects/registry.db',
     `WORKSPACE_ID=${slug}`,
+    'ANTHROPIC_API_KEY=',
+    'OPENAI_API_KEY=',
   ].join('\n')
   await post('application.saveEnvironment', {
     applicationId,

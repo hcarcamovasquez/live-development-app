@@ -56,7 +56,10 @@ export function startTerminalServer(): void {
     // Reutiliza la sesión existente o crea una nueva PTY.
     let session = sessions.get(key)
     if (!session) {
-      const term = pty.spawn(SHELL, [], {
+      // "__ai__" lanza OpenCode en vez del shell por defecto. El resto del ciclo
+      // de vida (buffer, scrollback, idle GC, single-client) es idéntico.
+      const isAi = id === '__ai__'
+      const term = pty.spawn(isAi ? 'opencode' : SHELL, [], {
         name: 'xterm-256color',
         cols: 80,
         rows: 24,

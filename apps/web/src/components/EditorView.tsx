@@ -5,7 +5,7 @@ import { FileExplorer } from './FileExplorer'
 import { GitPanel } from './GitPanel'
 import { DiffView } from './DiffView'
 import { ConfirmModal } from './ConfirmModal'
-import { TerminalDock, AppTerminal } from './TerminalPanel'
+import { TerminalDock, AppTerminal, AITerminal } from './TerminalPanel'
 import { fileMeta, langOf } from './fileMeta'
 import '../ide.css'
 
@@ -63,9 +63,9 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
   const [cursor, setCursor] = useState({ line: 1, col: 1 })
   const [saveFlash, setSaveFlash] = useState(false)
   const [delFile, setDelFile] = useState<string | null>(null)
-  // Panel inferior: 'app' (terminal aislada del dev server) | 'terminal' (shells) | 'none'.
-  const [dock, setDock] = useState<'none' | 'terminal' | 'app'>('app')
-  const toggleDock = (which: 'terminal' | 'app') =>
+  // Panel inferior: 'app' | 'terminal' (shells) | 'ai' (OpenCode) | 'none'.
+  const [dock, setDock] = useState<'none' | 'terminal' | 'app' | 'ai'>('app')
+  const toggleDock = (which: 'terminal' | 'app' | 'ai') =>
     setDock((d) => (d === which ? 'none' : which))
   const [leftView, setLeftView] = useState<'files' | 'git'>('files')
   const [leftOpen, setLeftOpen] = useState(() => localStorage.getItem('ide.leftOpen') !== '0')
@@ -501,6 +501,8 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
               onStop={stopApp}
               onClose={() => setDock('none')}
             />
+          ) : dock === 'ai' ? (
+            <AITerminal project={project} onClose={() => setDock('none')} />
           ) : (
             <TerminalDock project={project} onClose={() => setDock('none')} />
           )}
@@ -531,6 +533,14 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
           title="App (iniciar/detener el dev server)"
         >
           <span className={`ws-app-dot ${appStatus}`} /> App
+        </button>
+        <span className="ws-status-divider" />
+        <button
+          className={`ws-tool-toggle ${dock === 'ai' ? 'on' : ''}`}
+          onClick={() => toggleDock('ai')}
+          title="AI (asistente de código)"
+        >
+          ✦ AI
         </button>
         {showPreview && (
           <>
