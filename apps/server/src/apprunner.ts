@@ -25,6 +25,12 @@ type Runner = {
 const MAX = 200_000
 const runners = new Map<string, Runner>()
 
+// pnpm/vite se lanzan con spawn (pipes, sin PTY): emiten "\n" pelado. xterm.js
+// necesita "\r\n" o el log sale escalonado. Normaliza la salida del proceso.
+function toXterm(s: string): string {
+  return s.replace(/\r?\n/g, '\r\n')
+}
+
 function get(slug: string): Runner {
   let r = runners.get(slug)
   if (!r) {
@@ -105,7 +111,7 @@ async function startVite(slug: string, r: Runner, dir: string) {
 
   const onOut = (d: Buffer) => {
     const s = d.toString()
-    emit(r, s)
+    emit(r, toXterm(s))
     if (r.status !== 'running' && /ready in|Local:\s+http/i.test(s)) {
       r.status = 'running'
       r.url = base // ruta relativa, mismo origen (proxy /preview/<slug>/)
@@ -150,8 +156,8 @@ function runStreaming(r: Runner, cmd: string, args: string[], cwd: string): Prom
       env: { ...process.env, NODE_ENV: 'development', FORCE_COLOR: '1' },
     })
     r.proc = p
-    p.stdout?.on('data', (d) => emit(r, d.toString()))
-    p.stderr?.on('data', (d) => emit(r, d.toString()))
+    p.stdout?.on('data', (d) => emit(r, toXterm(d.toString())))
+    p.stderr?.on('data', (d) => emit(r, toXterm(d.toString())))
     p.on('exit', (code) => {
       r.proc = null
       code === 0 ? resolve() : reject(new Error(`${cmd} salió con código ${code}`))
