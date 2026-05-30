@@ -11,6 +11,7 @@ import { readFile, mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import httpProxy from 'http-proxy'
 import { api } from './api.js'
+import { agentApi } from './agent.js'
 import { webRoot, webDist, projectsDir } from './paths.js'
 import { startTerminalServer, handleTerminalUpgrade, stopTerminals } from './terminal.js'
 import { stopAllApps, appPort } from './apprunner.js'
@@ -49,6 +50,7 @@ function previewTarget(url: string): string | null {
 
 const app = new Hono()
 app.route('/api', api)
+app.route('/api/agent', agentApi)
 
 // En dev, las middlewares de Vite (HMR del editor por su propio ws). En prod, null.
 let viteMiddlewares:

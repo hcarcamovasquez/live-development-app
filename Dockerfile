@@ -16,16 +16,10 @@ RUN pnpm build
 FROM node:24-bookworm-slim AS runtime
 # gosu para bajar privilegios a `dev` desde el entrypoint; git para simple-git.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      git ca-certificates gosu curl && rm -rf /var/lib/apt/lists/*
+      git ca-certificates gosu && rm -rf /var/lib/apt/lists/*
 # pnpm global (en /usr/local/bin, usable por cualquier usuario) en vez de corepack
-# por-usuario, para que el usuario `dev` no tenga que descargarlo en runtime.
+# por-usuario, para que el usuario `node` no tenga que descargarlo en runtime.
 RUN npm install -g pnpm@11.1.1
-# OpenCode: agente IA de coding (provider-agnóstico: Claude, OpenAI, Gemini…).
-# El script instala en $HOME/.opencode/bin; lo movemos a /usr/local/bin para
-# que sea accesible por el usuario `node` sin depender de $HOME del builder.
-RUN curl -fsSL https://opencode.ai/install | bash && \
-    cp /root/.opencode/bin/opencode /usr/local/bin/opencode && \
-    chmod +x /usr/local/bin/opencode
 # El server y las terminales corren como el usuario `node` (uid 1000, ya existe
 # en la imagen base), no como root.
 WORKDIR /app

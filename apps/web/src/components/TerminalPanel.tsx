@@ -61,34 +61,6 @@ export function AppTerminal({
 }
 
 /**
- * Terminal IA aislada: una sola sesión que lanza OpenCode en el directorio del
- * proyecto. Persistente (sobrevive recargas). Sin botones Run/Stop: OpenCode
- * gestiona su propio ciclo de vida. Para el usuario solo es "AI".
- */
-export function AITerminal({
-  project,
-  onClose,
-}: {
-  project: string
-  onClose: () => void
-}) {
-  return (
-    <div className="ws-terminal">
-      <div className="ws-term-head">
-        <span className="ws-term-fixed">✦ AI</span>
-        <span className="ws-spacer" />
-        <button className="ws-icon-btn" title="Ocultar" onClick={onClose}>
-          ✕
-        </button>
-      </div>
-      <div className="ws-term-bodies">
-        <Term wsId="__ai__" numId={-2} project={project} readOnly={false} />
-      </div>
-    </div>
-  )
-}
-
-/**
  * Dock de terminales (shells PTY). Permite varias sesiones en pestañas y "+".
  */
 type TermsState = { ids: number[]; active: number; counter: number }

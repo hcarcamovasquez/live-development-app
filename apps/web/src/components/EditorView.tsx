@@ -5,7 +5,8 @@ import { FileExplorer } from './FileExplorer'
 import { GitPanel } from './GitPanel'
 import { DiffView } from './DiffView'
 import { ConfirmModal } from './ConfirmModal'
-import { TerminalDock, AppTerminal, AITerminal } from './TerminalPanel'
+import { TerminalDock, AppTerminal } from './TerminalPanel'
+import { AIChat } from './AIChat'
 import { fileMeta, langOf } from './fileMeta'
 import '../ide.css'
 
@@ -502,7 +503,7 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
               onClose={() => setDock('none')}
             />
           ) : dock === 'ai' ? (
-            <AITerminal project={project} onClose={() => setDock('none')} />
+            <AIChat project={project} onClose={() => setDock('none')} />
           ) : (
             <TerminalDock project={project} onClose={() => setDock('none')} />
           )}
