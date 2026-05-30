@@ -12,11 +12,48 @@ const TOOL_LABELS: Record<string, string> = {
   app_status: '○ Estado',
   git_status: '⎇ Estado git',
   git_commit: '✓ Commit',
+  list_components: '🧩 Secciones',
+  get_style: '🎨 Estilo',
 }
 
-export function AIChat({ project, onClose }: { project: string; onClose: () => void }) {
+// Catálogo de secciones de una landing. label = lo que ve el usuario,
+// name = nombre del componente/archivo (PascalCase ASCII).
+const SECTIONS: { label: string; name: string }[] = [
+  { label: 'Hero', name: 'Hero' },
+  { label: 'Navbar', name: 'Navbar' },
+  { label: 'Features', name: 'Features' },
+  { label: 'Pricing', name: 'Pricing' },
+  { label: 'Testimonios', name: 'Testimonials' },
+  { label: 'CTA', name: 'CTA' },
+  { label: 'Footer', name: 'Footer' },
+  { label: 'FAQ', name: 'FAQ' },
+  { label: 'Stats', name: 'Stats' },
+  { label: 'Logos', name: 'Logos' },
+]
+
+type Preset = { id: string; label: string; description: string; tokens: Record<string, string> }
+type FontPair = { id: string; label: string }
+type StyleConfig = { preset: string | null; tweak: string; accent: string | null; fontPair: string | null }
+
+const DEFAULT_STYLE: StyleConfig = { preset: null, tweak: '', accent: null, fontPair: null }
+
+export function AIChat({
+  project,
+  onClose,
+  onPreviewReload,
+}: {
+  project: string
+  onClose: () => void
+  onPreviewReload?: () => void
+}) {
   const [draft, setDraft] = useState('')
   const [loadingHistory, setLoadingHistory] = useState(true)
+
+  // Estilo (design system) del proyecto + catálogo de presets para el selector.
+  const [style, setStyle] = useState<StyleConfig>(DEFAULT_STYLE)
+  const [presets, setPresets] = useState<Preset[]>([])
+  const [fontPairs, setFontPairs] = useState<FontPair[]>([])
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   const { messages, sendMessage, status, error, setMessages } = useChat({
     transport: new DefaultChatTransport({
@@ -28,20 +65,40 @@ export function AIChat({ project, onClose }: { project: string; onClose: () => v
   const isLoading = status === 'streaming' || status === 'submitted'
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // Carga el historial persistido en el server (SQLite del workspace): sobrevive
-  // recargas, cierre del panel y cambios de navegador/dispositivo.
+  // Carga el historial persistido en el server (SQLite del workspace) UNA SOLA VEZ
+  // por proyecto. Importante: NO depender de `setMessages` (useChat devuelve una
+  // identidad nueva en cada render); si el efecto se re-ejecutara durante el
+  // streaming haría fetch del historial aún-no-guardado y machacaría los mensajes
+  // en vivo. El guard por ref evita cualquier re-ejecución.
+  const historyLoadedFor = useRef<string | null>(null)
   useEffect(() => {
-    let cancelled = false
+    if (historyLoadedFor.current === project) return
+    historyLoadedFor.current = project
     setLoadingHistory(true)
     fetch(`/api/agent/history?project=${encodeURIComponent(project)}`)
       .then((r) => r.json())
       .then((data: { messages?: UIMessage[] }) => {
-        if (!cancelled && Array.isArray(data.messages)) setMessages(data.messages)
+        if (Array.isArray(data.messages)) setMessages(data.messages)
       })
       .catch(() => { /* sin historial */ })
-      .finally(() => { if (!cancelled) setLoadingHistory(false) })
+      .finally(() => setLoadingHistory(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project])
+
+  // Carga el estilo actual + presets disponibles.
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/agent/style?project=${encodeURIComponent(project)}`)
+      .then((r) => r.json())
+      .then((data: { style?: StyleConfig; presets?: Preset[]; fontPairs?: FontPair[] }) => {
+        if (cancelled) return
+        if (data.style) setStyle({ ...DEFAULT_STYLE, ...data.style })
+        if (Array.isArray(data.presets)) setPresets(data.presets)
+        if (Array.isArray(data.fontPairs)) setFontPairs(data.fontPairs)
+      })
+      .catch(() => { /* sin estilo */ })
     return () => { cancelled = true }
-  }, [project, setMessages])
+  }, [project])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -54,11 +111,39 @@ export function AIChat({ project, onClose }: { project: string; onClose: () => v
     setDraft('')
   }
 
+  // Chip de sección → pide al agente generar/actualizar ese componente.
+  const createSection = (s: { label: string; name: string }) => {
+    if (isLoading) return
+    const text =
+      `Crea o actualiza la sección **${s.label}** de la landing siguiendo el estilo del ` +
+      `proyecto. Debe ser el archivo src/components/${s.name}.tsx con export default, ` +
+      `autocontenido y usando las variables CSS del design system.`
+    sendMessage({ role: 'user', parts: [{ type: 'text', text }] })
+  }
+
   const clearChat = () => {
     setMessages([])
     fetch(`/api/agent/history?project=${encodeURIComponent(project)}`, { method: 'DELETE' })
       .catch(() => { /* noop */ })
   }
+
+  const applyStyle = async (next: StyleConfig) => {
+    setStyle(next)
+    setPickerOpen(false)
+    try {
+      await fetch('/api/agent/style', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ project, ...next }),
+      })
+      onPreviewReload?.()
+    } catch {
+      /* noop */
+    }
+  }
+
+  const currentPreset = presets.find((p) => p.id === style.preset)
+  const styleLabel = currentPreset ? currentPreset.label : 'Sin estilo'
 
   // Indicador "trabajando…". Gemini entrega cada tool-call (p. ej. write_file con
   // todo el contenido del archivo) SOLO cuando termina de generarlo: durante esos
@@ -80,6 +165,13 @@ export function AIChat({ project, onClose }: { project: string; onClose: () => v
     <div className="ws-ai-chat">
       <div className="ws-term-head">
         <span className="ws-term-fixed">✦ AI</span>
+        <button
+          className={`ws-ai-style-badge${currentPreset ? ' on' : ''}`}
+          title="Elegir el estilo de la librería"
+          onClick={() => setPickerOpen(true)}
+        >
+          🎨 {styleLabel}
+        </button>
         <span className="ws-spacer" />
         {messages.length > 0 && (
           <button className="ws-icon-btn" title="Nueva conversación" onClick={clearChat}>⟳</button>
@@ -90,7 +182,10 @@ export function AIChat({ project, onClose }: { project: string; onClose: () => v
       <div className="ws-ai-messages">
         {messages.length === 0 && !isLoading && !loadingHistory && (
           <div className="ws-ai-empty">
-            ✦ ¿En qué puedo ayudarte con <strong>{project}</strong>?
+            ✦ Librería de componentes de <strong>{project}</strong>.<br />
+            {currentPreset
+              ? <>Estilo <strong>{currentPreset.label}</strong>. Elige una sección para generarla:</>
+              : <>Primero elige un <strong>estilo</strong> (🎨 arriba); luego una sección:</>}
           </div>
         )}
 
@@ -148,12 +243,27 @@ export function AIChat({ project, onClose }: { project: string; onClose: () => v
         <div ref={bottomRef} />
       </div>
 
+      {/* Catálogo de secciones */}
+      <div className="ws-ai-chips" role="group" aria-label="Secciones de landing">
+        {SECTIONS.map((s) => (
+          <button
+            key={s.name}
+            className="ws-ai-chip"
+            disabled={isLoading}
+            title={`Generar sección ${s.label}`}
+            onClick={() => createSection(s)}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
       <form className="ws-ai-form" onSubmit={(e) => { e.preventDefault(); submit() }}>
         <textarea
           className="ws-ai-input"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Describe qué quieres hacer… (Enter para enviar)"
+          placeholder="Describe una sección o un ajuste… (Enter para enviar)"
           rows={2}
           disabled={isLoading}
           onKeyDown={(e) => {
@@ -164,6 +274,121 @@ export function AIChat({ project, onClose }: { project: string; onClose: () => v
           {isLoading ? <span className="ws-ai-tool-spin" /> : '↑'}
         </button>
       </form>
+
+      {pickerOpen && (
+        <StylePicker
+          presets={presets}
+          fontPairs={fontPairs}
+          current={style}
+          onApply={applyStyle}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+function StylePicker({
+  presets,
+  fontPairs,
+  current,
+  onApply,
+  onClose,
+}: {
+  presets: Preset[]
+  fontPairs: FontPair[]
+  current: StyleConfig
+  onApply: (s: StyleConfig) => void
+  onClose: () => void
+}) {
+  const [preset, setPreset] = useState<string | null>(current.preset)
+  const [accent, setAccent] = useState<string>(current.accent ?? '')
+  const [fontPair, setFontPair] = useState<string>(current.fontPair ?? '')
+  const [tweak, setTweak] = useState<string>(current.tweak ?? '')
+
+  const apply = () =>
+    onApply({
+      preset,
+      accent: accent.trim() ? accent.trim() : null,
+      fontPair: fontPair || null,
+      tweak: tweak.trim(),
+    })
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal ws-style-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <span>Estilo de la librería</span>
+          <button className="ws-icon-btn" onClick={onClose}>✕</button>
+        </div>
+
+        <div className="ws-style-grid">
+          {presets.map((p) => {
+            const bg = p.tokens['color-bg'] || '#111'
+            const ac = p.tokens['color-accent'] || '#888'
+            const tx = p.tokens['color-text'] || '#eee'
+            return (
+              <button
+                key={p.id}
+                className={`ws-style-card${preset === p.id ? ' sel' : ''}`}
+                onClick={() => setPreset(p.id)}
+                title={p.description}
+              >
+                <span className="ws-style-swatch" style={{ background: bg }}>
+                  <span style={{ background: ac }} />
+                  <span style={{ background: tx }} />
+                </span>
+                <span className="ws-style-name">{p.label}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="ws-style-row">
+          <label className="ws-style-field">
+            <span>Acento (opcional)</span>
+            <span className="ws-style-accent">
+              <input
+                type="color"
+                value={/^#[0-9a-f]{6}$/i.test(accent) ? accent : '#888888'}
+                onChange={(e) => setAccent(e.target.value)}
+              />
+              <input
+                type="text"
+                placeholder="#hex"
+                value={accent}
+                onChange={(e) => setAccent(e.target.value)}
+              />
+            </span>
+          </label>
+
+          <label className="ws-style-field">
+            <span>Tipografía (opcional)</span>
+            <select value={fontPair} onChange={(e) => setFontPair(e.target.value)}>
+              <option value="">Según el preset</option>
+              {fontPairs.map((f) => (
+                <option key={f.id} value={f.id}>{f.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <label className="ws-style-field">
+          <span>Ajuste libre (opcional)</span>
+          <textarea
+            className="ws-style-tweak"
+            rows={2}
+            placeholder="p. ej. más minimalista, esquinas redondeadas, tono cálido…"
+            value={tweak}
+            onChange={(e) => setTweak(e.target.value)}
+          />
+        </label>
+
+        <div className="modal-actions">
+          <button className="btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn-go" onClick={apply}>Aplicar estilo</button>
+        </div>
+      </div>
     </div>
   )
 }

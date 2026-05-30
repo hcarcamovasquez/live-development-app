@@ -8,8 +8,46 @@ import { getProjectRow, getChatHistory, saveChatHistory, clearChatHistory } from
 import { projectPath, slug } from './projects.js'
 import { statusOf, commit } from './git.js'
 import { runApp, stopApp, appState } from './apprunner.js'
+import {
+  PRESETS,
+  FONT_PAIRS,
+  DEFAULT_STYLE,
+  getPreset,
+  renderTokensCss,
+  type StyleConfig,
+} from './presets.js'
 
 export const agentApi = new Hono()
+
+// ── Estilo (design system) por proyecto ───────────────────────────────────────
+/** Lee `style.json` del proyecto (o el estilo por defecto si no existe). */
+async function readStyle(project: string): Promise<StyleConfig> {
+  try {
+    const raw = await readFile(safe(project, 'style.json'), 'utf8')
+    return { ...DEFAULT_STYLE, ...(JSON.parse(raw) as Partial<StyleConfig>) }
+  } catch {
+    return { ...DEFAULT_STYLE }
+  }
+}
+
+/** Persiste el estilo: reescribe `style.json` y regenera `src/styles/tokens.css`. */
+async function writeStyle(project: string, style: StyleConfig): Promise<void> {
+  await writeFile(safe(project, 'style.json'), JSON.stringify(style, null, 2) + '\n', 'utf8')
+  const cssAbs = safe(project, 'src/styles/tokens.css')
+  await mkdir(dirname(cssAbs), { recursive: true })
+  await writeFile(cssAbs, renderTokensCss(style), 'utf8')
+}
+
+/** Resumen del contrato de estilo para inyectar en el system prompt. */
+function styleSummary(style: StyleConfig): string {
+  const p = getPreset(style.preset)
+  if (!p) {
+    return 'AÚN NO hay un estilo elegido (design system neutro). Si el usuario no ha elegido estilo, sugiérele abrir el selector "Estilo" en ✦ AI; mientras tanto usa las variables CSS de src/styles/tokens.css.'
+  }
+  const lines = [`Estilo elegido: ${p.label}. ${p.description}`]
+  if (style.tweak) lines.push(`Ajuste pedido por el usuario: "${style.tweak}".`)
+  return lines.join('\n')
+}
 
 // Guía de diseño frontend (basada en la skill frontend-design de Anthropic).
 // Se inyecta en el system prompt para que la UI generada evite la estética
@@ -136,6 +174,38 @@ const tools = (project: string) => ({
     }),
     execute: async ({ message, all }) => commit(slug(project), message, all),
   }),
+
+  // ── Específicas de la librería de landing ──
+  list_components: tool({
+    description: 'Lista las secciones (componentes) que ya existen en src/components.',
+    inputSchema: z.object({}),
+    execute: async () => {
+      try {
+        const entries = await readdir(safe(project, 'src/components'), { withFileTypes: true })
+        return {
+          components: entries
+            .filter((e) => e.isFile() && e.name.endsWith('.tsx'))
+            .map((e) => e.name.replace(/\.tsx$/, '')),
+        }
+      } catch {
+        return { components: [] }
+      }
+    },
+  }),
+
+  get_style: tool({
+    description:
+      'Devuelve el estilo/design system elegido para la librería (preset + ajuste). Consúltalo antes de generar un componente para respetar el estilo.',
+    inputSchema: z.object({}),
+    execute: async () => {
+      const style = await readStyle(project)
+      const p = getPreset(style.preset)
+      return {
+        style,
+        preset: p ? { id: p.id, label: p.label, description: p.description } : null,
+      }
+    },
+  }),
 })
 
 agentApi.post('/chat', async (c) => {
@@ -150,20 +220,44 @@ agentApi.post('/chat', async (c) => {
   const row = getProjectRow(s)
   if (!row) return c.json({ error: 'Proyecto no encontrado' }, 404)
 
+  // Contrato de estilo del proyecto (design system elegido por el usuario).
+  const style = await readStyle(project)
+
   // Modelo configurable por env (GEMINI_MODEL); default Gemini 3.1 Pro. Si tu key
   // no tiene acceso a uno, cámbialo sin tocar código (p. ej. gemini-2.5-flash).
   const result = streamText({
     model: google(process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview'),
-    system: `Eres un asistente de desarrollo de software embebido en un IDE web.
-Estás trabajando sobre el proyecto "${row.name}" (slug: ${s}).
-Tu misión es ayudar al desarrollador a escribir, modificar y organizar su código.
+    system: `Eres un agente especializado en construir una LIBRERÍA DE COMPONENTES DE LANDING.
+Trabajas dentro de un IDE web sobre el proyecto "${row.name}" (slug: ${s}), una app
+React + Vite cuya home (src/UserApp.tsx) es una GALERÍA que auto-descubre y renderiza
+cada sección de src/components/*.tsx.
+
+Cómo funciona la librería:
+- Cada sección de landing es UN archivo en src/components/<Nombre>.tsx con \`export default\`
+  de un componente React autocontenido (con sus datos/textos demo incluidos).
+- La galería los muestra sola (import.meta.glob); NO tienes que registrar nada ni tocar
+  src/UserApp.tsx ni src/main.tsx.
+- Nombres en PascalCase y descriptivos por tipo de sección: Hero, Navbar, Features,
+  Pricing, Testimonials, CTA, Footer, FAQ, Stats, Logos…
 
 Reglas:
-- Antes de modificar un archivo, léelo primero con read_file.
-- Escribe el contenido COMPLETO del archivo al usar write_file (nunca parcial).
-- El archivo principal de la app es src/UserApp.tsx.
-- Si el usuario pide cambios en múltiples archivos, hazlos todos.
-- Responde siempre en el mismo idioma que el usuario.
+- Antes de modificar un archivo existente, léelo con read_file. Usa list_components para
+  ver qué secciones ya existen y get_style para conocer el estilo.
+- Al crear/editar una sección, escribe el archivo COMPLETO con write_file (nunca parcial).
+- Una petición = normalmente UNA sección nueva (un archivo en src/components/). No generes
+  toda la landing salvo que te lo pidan explícitamente.
+- Componentes responsive y accesibles, a ancho completo (una sección de landing real).
+- ESTILO: respeta el design system. USA SIEMPRE las variables CSS de src/styles/tokens.css
+  (var(--color-bg), var(--color-surface), var(--color-text), var(--color-muted),
+  var(--color-accent), var(--color-accent-ink), var(--color-border), var(--font-display),
+  var(--font-text), var(--radius), var(--shadow), var(--space), var(--max-width)).
+  NO hardcodees colores ni fuentes: el usuario cambia el estilo y todo debe re-estilarse solo.
+- No edites src/styles/tokens.css (lo gestiona el selector de estilo). No instales librerías
+  de UI: CSS puro y React.
+- Responde breve y en el mismo idioma que el usuario.
+
+Contrato de estilo actual:
+${styleSummary(style)}
 ${DESIGN_GUIDE}`,
     messages: await convertToModelMessages(messages),
     stopWhen: stepCountIs(15),
@@ -198,4 +292,35 @@ agentApi.delete('/history', (c) => {
   const s = slug(project)
   if (s) clearChatHistory(s)
   return c.json({ ok: true })
+})
+
+// ── Estilo / design system de la librería ─────────────────────────────────────
+// Devuelve el estilo actual + el catálogo de presets y parejas tipográficas
+// (para el selector "Estilo" del panel ✦ AI).
+agentApi.get('/style', async (c) => {
+  const project = c.req.query('project') ?? ''
+  const s = slug(project)
+  if (!s || !getProjectRow(s)) {
+    return c.json({ style: DEFAULT_STYLE, presets: PRESETS, fontPairs: FONT_PAIRS })
+  }
+  const style = await readStyle(project)
+  return c.json({ style, presets: PRESETS, fontPairs: FONT_PAIRS })
+})
+
+// Aplica un estilo: persiste style.json y regenera src/styles/tokens.css
+// (determinista, sin LLM). El preview recarga y todos los componentes se re-estilan.
+agentApi.post('/style', async (c) => {
+  const body = await c.req.json<Partial<StyleConfig> & { project?: string }>()
+  const project = body.project ?? ''
+  const s = slug(project)
+  if (!s || !getProjectRow(s)) return c.json({ error: 'Proyecto no encontrado' }, 404)
+
+  const style: StyleConfig = {
+    preset: typeof body.preset === 'string' ? body.preset : null,
+    tweak: typeof body.tweak === 'string' ? body.tweak : '',
+    accent: typeof body.accent === 'string' ? body.accent : null,
+    fontPair: typeof body.fontPair === 'string' ? body.fontPair : null,
+  }
+  await writeStyle(project, style)
+  return c.json({ ok: true, style })
 })

@@ -503,7 +503,11 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
               onClose={() => setDock('none')}
             />
           ) : dock === 'ai' ? (
-            <AIChat project={project} onClose={() => setDock('none')} />
+            <AIChat
+              project={project}
+              onClose={() => setDock('none')}
+              onPreviewReload={() => setPreviewNonce((n) => n + 1)}
+            />
           ) : (
             <TerminalDock project={project} onClose={() => setDock('none')} />
           )}

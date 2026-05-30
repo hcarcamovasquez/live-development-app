@@ -4,6 +4,7 @@ import { projectsDir } from './paths.js'
 import { listProjectRows, getProjectRow, insertProjectRow, deleteProjectRow } from './db.js'
 import { initRepo } from './git.js'
 import { appState, stopApp } from './apprunner.js'
+import { renderTokensCss, DEFAULT_STYLE } from './presets.js'
 
 /**
  * Gestiona MÚLTIPLES proyectos. Cada proyecto es una app Vite COMPLETA e
@@ -83,6 +84,7 @@ export default defineConfig({
 `,
     'src/main.tsx': `import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import './styles/tokens.css' // design system de la librería (variables CSS globales)
 import UserApp from './UserApp'
 
 createRoot(document.getElementById('root')!).render(
@@ -91,34 +93,96 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 `,
-    'src/UserApp.tsx': `import { useState } from 'react'
+    // Galería viva de la librería. Auto-descubre cada sección de src/components/*.tsx
+    // (export default) con import.meta.glob; el agente ✦ AI crea/edita esos archivos.
+    'src/UserApp.tsx': `import { useState, type ComponentType } from 'react'
 
-// 👋 Proyecto "${name}". Pulsa Run en la terminal "App" para instalar y arrancar.
+// Orden canónico de una landing (lo demás va alfabético al final).
+const ORDER = [
+  'Navbar', 'Header', 'Hero', 'Logos', 'Features', 'Stats', 'About',
+  'Pricing', 'Testimonials', 'Testimonios', 'Gallery', 'FAQ', 'CTA',
+  'Newsletter', 'Footer',
+]
+
+const modules = import.meta.glob('./components/*.tsx', { eager: true })
+
+type Section = { name: string; Component: ComponentType }
+
+function sections(): Section[] {
+  const list: Section[] = []
+  for (const path in modules) {
+    const mod = modules[path]
+    const Component = (mod && (mod as { default?: ComponentType }).default)
+    if (!Component) continue
+    const name = (path.split('/').pop() || '').replace(/\\.tsx$/, '')
+    list.push({ name, Component })
+  }
+  const rank = (n: string) => (ORDER.indexOf(n) === -1 ? 999 : ORDER.indexOf(n))
+  list.sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name))
+  return list
+}
+
 export default function UserApp() {
-  const [count, setCount] = useState(0)
+  const [showLabels, setShowLabels] = useState(true)
+  const list = sections()
+
+  if (list.length === 0) {
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'grid', placeItems: 'center',
+        padding: '2rem', textAlign: 'center',
+      }}>
+        <div style={{ maxWidth: 460 }}>
+          <div style={{
+            fontFamily: 'var(--font-display)', fontSize: '1.8rem',
+            color: 'var(--color-text)', marginBottom: '0.6rem',
+          }}>Librería vacía</div>
+          <p style={{ color: 'var(--color-muted)', lineHeight: 1.6 }}>
+            Abre <strong>✦ AI</strong>, elige un <strong>estilo</strong> y pulsa una
+            sección del catálogo (Hero, Pricing, Footer…) para generar tu primer
+            componente. Aparecerá aquí automáticamente.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', padding: 24 }}>
-      <h1 style={{ color: '#646cff' }}>${name} 🚀</h1>
-      <p>Edita este componente y mira el hot reload en vivo.</p>
+    <div>
       <button
-        onClick={() => setCount((c) => c + 1)}
+        onClick={() => setShowLabels((v) => !v)}
         style={{
-          padding: '8px 16px',
-          fontSize: 16,
-          borderRadius: 8,
-          border: '1px solid #646cff',
-          background: '#646cff',
-          color: 'white',
-          cursor: 'pointer',
+          position: 'fixed', top: 12, right: 12, zIndex: 9999,
+          font: '600 12px var(--font-text)', padding: '6px 12px',
+          color: 'var(--color-accent-ink)', background: 'var(--color-accent)',
+          border: 'none', borderRadius: 'var(--radius)', cursor: 'pointer',
+          opacity: 0.85,
         }}
       >
-        Contador: {count}
+        {showLabels ? 'Ocultar etiquetas' : 'Ver etiquetas'}
       </button>
+
+      {list.map(({ name, Component }) => (
+        <section key={name} style={{ position: 'relative' }}>
+          {showLabels && (
+            <span style={{
+              position: 'absolute', top: 8, left: 8, zIndex: 50,
+              font: '600 10px/1 var(--font-text)', letterSpacing: '0.08em',
+              textTransform: 'uppercase', padding: '4px 8px',
+              color: 'var(--color-accent-ink)', background: 'var(--color-accent)',
+              borderRadius: 'var(--radius)', opacity: 0.9,
+            }}>{name}</span>
+          )}
+          <Component />
+        </section>
+      ))}
     </div>
   )
 }
 `,
+    'src/components/.gitkeep': '',
+    'src/styles/tokens.css': renderTokensCss(DEFAULT_STYLE),
+    'style.json': JSON.stringify(DEFAULT_STYLE, null, 2) + '\n',
   }
 }
 
