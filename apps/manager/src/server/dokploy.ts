@@ -84,17 +84,16 @@ export async function createAndDeploy(name: string, slug: string): Promise<Creat
 
   // 4) Variables de entorno del editor. required: applicationId, env,
   //    buildArgs, buildSecrets, createEnvFile
-  // LLM API keys para OpenCode (vacías por defecto; el usuario las configura
-  // en Dokploy → Environment del workspace según el proveedor que quiera usar).
+  // Key de Gemini del agente IA: se PROPAGA desde el manager. Así, al crear un
+  // workspace, hereda automáticamente la key y el chat ✦ AI funciona sin
+  // configurar nada por workspace.
   const env = [
     'NODE_ENV=production',
     `PORT=${config.editorPort}`,
     'PROJECTS_DIR=/home/node/projects',
     'DB_PATH=/home/node/projects/registry.db',
     `WORKSPACE_ID=${slug}`,
-    'ANTHROPIC_API_KEY=',
-    'OPENAI_API_KEY=',
-    'GOOGLE_GENERATIVE_AI_API_KEY=',
+    `GOOGLE_GENERATIVE_AI_API_KEY=${config.geminiApiKey}`,
   ].join('\n')
   await post('application.saveEnvironment', {
     applicationId,

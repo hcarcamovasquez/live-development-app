@@ -20,6 +20,8 @@ services:
       EDITOR_PORT: ${EDITOR_PORT:-3000}
       # Sufijo de dominio para los workspaces (tu wildcard o <ip>.sslip.io)
       WORKSPACE_DOMAIN_SUFFIX: ${WORKSPACE_DOMAIN_SUFFIX:-}
+      # Key de Gemini (agente IA): se propaga a cada workspace nuevo.
+      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY:-}
     volumes:
       - manager-data:/data
     ports:
