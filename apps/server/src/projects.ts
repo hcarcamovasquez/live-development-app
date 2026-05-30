@@ -54,10 +54,18 @@ dist
 import react from '@vitejs/plugin-react'
 
 // Dev server propio del proyecto. El runner pasa --port y --base por CLI.
-// allowedHosts permite que el editor lo sirva por proxy (mismo origen).
+// allowedHosts: el editor lo sirve por proxy (mismo origen).
+// hmr.clientPort/protocol: el navegador llega por el dominio del editor (p. ej.
+// https/443), no por el puerto interno de Vite; el runner los inyecta por env.
+const hmrClientPort = Number(process.env.PREVIEW_HMR_CLIENT_PORT) || undefined
+const hmrProtocol = process.env.PREVIEW_HMR_PROTOCOL || undefined
 export default defineConfig({
   plugins: [react()],
-  server: { allowedHosts: true },
+  server: {
+    host: '127.0.0.1',
+    allowedHosts: true,
+    hmr: hmrClientPort ? { clientPort: hmrClientPort, protocol: hmrProtocol } : true,
+  },
 })
 `,
     'index.html': `<!doctype html>

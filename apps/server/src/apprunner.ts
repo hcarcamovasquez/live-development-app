@@ -95,7 +95,10 @@ async function startVite(slug: string, r: Runner, dir: string) {
   const proc = spawn(
     bin,
     ['--port', String(port), '--strictPort', '--host', '127.0.0.1', '--base', base],
-    { cwd: dir, env: { ...process.env, FORCE_COLOR: '1' } },
+    // NODE_ENV=development: el editor corre en production, pero el Vite del
+    // proyecto debe ir en dev (si no, plugin-react omite el preámbulo de Fast
+    // Refresh y la app no monta). PREVIEW_HMR_* se heredan de process.env.
+    { cwd: dir, env: { ...process.env, NODE_ENV: 'development', FORCE_COLOR: '1' } },
   )
   r.proc = proc
   r.port = port
@@ -140,7 +143,12 @@ export function stopAllApps(): void {
 
 function runStreaming(r: Runner, cmd: string, args: string[], cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { cwd, env: { ...process.env, FORCE_COLOR: '1' } })
+    const p = spawn(cmd, args, {
+      cwd,
+      // dev: instala también devDependencies (vite, plugin-react) aunque el
+      // contenedor del editor esté en NODE_ENV=production.
+      env: { ...process.env, NODE_ENV: 'development', FORCE_COLOR: '1' },
+    })
     r.proc = p
     p.stdout?.on('data', (d) => emit(r, d.toString()))
     p.stderr?.on('data', (d) => emit(r, d.toString()))

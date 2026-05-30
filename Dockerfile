@@ -38,7 +38,9 @@ ENV NODE_ENV=production \
     PORT=3000 \
     PROJECTS_DIR=/data/projects \
     DB_PATH=/data/registry.db \
-    NODE_OPTIONS=--disable-warning=ExperimentalWarning
+    NODE_OPTIONS=--disable-warning=ExperimentalWarning \
+    PREVIEW_HMR_CLIENT_PORT=443 \
+    PREVIEW_HMR_PROTOCOL=wss
 
 # Persistencia de los proyectos del workspace (Dokploy monta un volumen aquí).
 VOLUME /data
