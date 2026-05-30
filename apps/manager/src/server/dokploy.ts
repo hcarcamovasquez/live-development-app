@@ -94,6 +94,7 @@ export async function createAndDeploy(name: string, slug: string): Promise<Creat
     `WORKSPACE_ID=${slug}`,
     'ANTHROPIC_API_KEY=',
     'OPENAI_API_KEY=',
+    'GOOGLE_GENERATIVE_AI_API_KEY=',
   ].join('\n')
   await post('application.saveEnvironment', {
     applicationId,

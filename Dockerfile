@@ -21,8 +21,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # por-usuario, para que el usuario `dev` no tenga que descargarlo en runtime.
 RUN npm install -g pnpm@11.1.1
 # OpenCode: agente IA de coding (provider-agnóstico: Claude, OpenAI, Gemini…).
-# Binario precompilado instalado en /usr/local/bin para todos los usuarios.
-RUN curl -fsSL https://opencode.ai/install | bash -s -- -b /usr/local/bin
+# El script instala en $HOME/.opencode/bin; lo movemos a /usr/local/bin para
+# que sea accesible por el usuario `node` sin depender de $HOME del builder.
+RUN curl -fsSL https://opencode.ai/install | bash && \
+    cp /root/.opencode/bin/opencode /usr/local/bin/opencode && \
+    chmod +x /usr/local/bin/opencode
 # El server y las terminales corren como el usuario `node` (uid 1000, ya existe
 # en la imagen base), no como root.
 WORKDIR /app
@@ -50,10 +53,7 @@ ENV NODE_ENV=production \
     PREVIEW_HMR_CLIENT_PORT=443 \
     PREVIEW_HMR_PROTOCOL=wss \
     HOME=/home/node \
-    SHELL=/bin/bash \
-    # Keys del proveedor LLM para OpenCode (vacías; se sobreescriben en Dokploy).
-    ANTHROPIC_API_KEY="" \
-    OPENAI_API_KEY=""
+    SHELL=/bin/bash
 
 # Persistencia de los proyectos del workspace, bajo el home del usuario `node`
 # (Dokploy monta el volumen aquí). La terminal abre dentro de este árbol.
