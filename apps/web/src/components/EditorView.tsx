@@ -67,7 +67,6 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
   const [dock, setDock] = useState<'none' | 'terminal' | 'app'>('app')
   const toggleDock = (which: 'terminal' | 'app') =>
     setDock((d) => (d === which ? 'none' : which))
-  const [terminalPort, setTerminalPort] = useState(0)
   const [leftView, setLeftView] = useState<'files' | 'git'>('files')
   const [leftOpen, setLeftOpen] = useState(() => localStorage.getItem('ide.leftOpen') !== '0')
   const [diff, setDiff] = useState<Diff | null>(null)
@@ -188,14 +187,8 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
   )
 
   useEffect(() => {
-    let cancelled = false
     restoredRef.current = false
-    fetch('/api/config')
-      .then((r) => r.json())
-      .then((d) => !cancelled && setTerminalPort(d.terminalPort ?? 0))
-      .catch(() => {})
-
-    // Restaura la sesión (pestañas / terminal). Archivos inexistentes se ignoran al abrir.
+    // Restaura la sesión (pestañas). Archivos inexistentes se ignoran al abrir.
     const session = loadSession(project)
     const saved = session?.tabs ?? []
     if (saved.length) {
@@ -205,9 +198,6 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
       openFile(DEFAULT_FILE)
     }
     restoredRef.current = true
-    return () => {
-      cancelled = true
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project])
 
@@ -231,14 +221,12 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
     }
   }, [project])
 
-  // La app solo vive mientras el IDE está abierto: al salir/cerrar, se detiene.
+  // Al cerrar la pestaña del workspace se detiene la app (el contenedor además
+  // baja todo en SIGTERM). No se detiene al navegar dentro del propio workspace.
   useEffect(() => {
     const stop = () => navigator.sendBeacon(`/api/app/${encodeURIComponent(project)}/stop`)
     window.addEventListener('beforeunload', stop)
-    return () => {
-      window.removeEventListener('beforeunload', stop)
-      stop()
-    }
+    return () => window.removeEventListener('beforeunload', stop)
   }, [project])
 
   const runApp = () => {
@@ -501,25 +489,20 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
         )}
       </div>
 
-      {/* Terminal integrada (PTY del proyecto), redimensionable en alto */}
-      {dock !== 'none' && terminalPort > 0 && (
+      {/* Panel inferior (App / Terminal), redimensionable en alto */}
+      {dock !== 'none' && (
         <div className="ws-terminal-wrap" style={{ height: termH }}>
           <div className="ws-split-h" onPointerDown={startDrag('term')} />
           {dock === 'app' ? (
             <AppTerminal
               project={project}
-              terminalPort={terminalPort}
               appStatus={appStatus}
               onRun={runApp}
               onStop={stopApp}
               onClose={() => setDock('none')}
             />
           ) : (
-            <TerminalDock
-              project={project}
-              terminalPort={terminalPort}
-              onClose={() => setDock('none')}
-            />
+            <TerminalDock project={project} onClose={() => setDock('none')} />
           )}
         </div>
       )}

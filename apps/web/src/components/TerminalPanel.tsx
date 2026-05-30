@@ -17,14 +17,12 @@ const STATUS_LABEL: Record<string, string> = {
  */
 export function AppTerminal({
   project,
-  terminalPort,
   appStatus,
   onRun,
   onStop,
   onClose,
 }: {
   project: string
-  terminalPort: number
   appStatus: string
   onRun: () => void
   onStop: () => void
@@ -56,7 +54,7 @@ export function AppTerminal({
         </button>
       </div>
       <div className="ws-term-bodies">
-        <Term wsId="__app__" numId={-1} project={project} terminalPort={terminalPort} readOnly />
+        <Term wsId="__app__" numId={-1} project={project} readOnly />
       </div>
     </div>
   )
@@ -81,11 +79,9 @@ function saveTerms(project: string, s: TermsState) {
 
 export function TerminalDock({
   project,
-  terminalPort,
   onClose,
 }: {
   project: string
-  terminalPort: number
   onClose: () => void
 }) {
   const [state, setState] = useState<TermsState>(() => loadTerms(project))
@@ -155,7 +151,6 @@ export function TerminalDock({
             wsId={String(id)}
             numId={id}
             project={project}
-            terminalPort={terminalPort}
             hidden={id !== active}
             killSet={killSet.current}
           />
@@ -169,7 +164,6 @@ function Term({
   wsId,
   numId,
   project,
-  terminalPort,
   hidden = false,
   readOnly = false,
   killSet,
@@ -177,7 +171,6 @@ function Term({
   wsId: string
   numId: number
   project: string
-  terminalPort: number
   hidden?: boolean
   readOnly?: boolean
   killSet?: Set<number>
@@ -213,7 +206,7 @@ function Term({
 
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     const ws = new WebSocket(
-      `${proto}://${location.hostname}:${terminalPort}/?project=${encodeURIComponent(project)}&id=${wsId}`,
+      `${proto}://${location.host}/ws/terminal?project=${encodeURIComponent(project)}&id=${wsId}`,
     )
 
     const sendResize = () => {
@@ -253,7 +246,7 @@ function Term({
       term.dispose()
       fitRef.current = null
     }
-  }, [wsId, numId, project, terminalPort, readOnly, killSet])
+  }, [wsId, numId, project, readOnly, killSet])
 
   useEffect(() => {
     if (!hidden) fitRef.current?.()

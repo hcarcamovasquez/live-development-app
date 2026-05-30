@@ -17,6 +17,7 @@ type Runner = {
   proc: ChildProcess | null
   status: AppStatus
   url: string | null
+  port: number | null
   buffer: string
   clients: Set<WebSocket>
 }
@@ -27,10 +28,15 @@ const runners = new Map<string, Runner>()
 function get(slug: string): Runner {
   let r = runners.get(slug)
   if (!r) {
-    r = { proc: null, status: 'idle', url: null, buffer: '', clients: new Set() }
+    r = { proc: null, status: 'idle', url: null, port: null, buffer: '', clients: new Set() }
     runners.set(slug, r)
   }
   return r
+}
+
+/** Puerto local del dev server de un proyecto en ejecución (para el proxy). */
+export function appPort(slug: string): number | null {
+  return get(slug).port
 }
 
 function emit(r: Runner, data: string) {
@@ -69,7 +75,7 @@ export function runApp(slug: string): { status: AppStatus; url: string | null } 
       if (needInstall) {
         await runStreaming(r, 'pnpm', ['install', '--ignore-workspace'], dir)
       }
-      await startVite(r, dir)
+      await startVite(slug, r, dir)
     } catch (e) {
       r.status = 'error'
       emit(r, `\r\n\x1b[31m$ error: ${String(e)}\x1b[0m\r\n`)
@@ -79,24 +85,28 @@ export function runApp(slug: string): { status: AppStatus; url: string | null } 
   return appState(slug)
 }
 
-async function startVite(r: Runner, dir: string) {
+async function startVite(slug: string, r: Runner, dir: string) {
   const port = await getFreePort(previewPortBase)
-  const url = `http://127.0.0.1:${port}`
+  // El preview se sirve por proxy del editor en el MISMO origen (no 127.0.0.1),
+  // para funcionar tras un dominio remoto. Vite usa ese base path.
+  const base = `/preview/${slug}/`
   const bin = join(dir, 'node_modules', '.bin', 'vite')
   r.status = 'starting'
-  const proc = spawn(bin, ['--port', String(port), '--strictPort', '--host', '127.0.0.1'], {
-    cwd: dir,
-    env: { ...process.env, FORCE_COLOR: '1' },
-  })
+  const proc = spawn(
+    bin,
+    ['--port', String(port), '--strictPort', '--host', '127.0.0.1', '--base', base],
+    { cwd: dir, env: { ...process.env, FORCE_COLOR: '1' } },
+  )
   r.proc = proc
+  r.port = port
 
   const onOut = (d: Buffer) => {
     const s = d.toString()
     emit(r, s)
     if (r.status !== 'running' && /ready in|Local:\s+http/i.test(s)) {
       r.status = 'running'
-      r.url = url
-      emit(r, `\r\n\x1b[32m$ app lista en ${url}\x1b[0m\r\n`)
+      r.url = base // ruta relativa, mismo origen (proxy /preview/<slug>/)
+      emit(r, `\r\n\x1b[32m$ app lista — preview en ${base}\x1b[0m\r\n`)
     }
   }
   proc.stdout?.on('data', onOut)
@@ -104,6 +114,7 @@ async function startVite(r: Runner, dir: string) {
   proc.on('exit', (code) => {
     emit(r, `\r\n\x1b[33m$ app detenida (código ${code ?? 0})\x1b[0m\r\n`)
     r.proc = null
+    r.port = null
     r.status = 'idle'
     r.url = null
   })
@@ -119,6 +130,7 @@ export function stopApp(slug: string): { status: AppStatus; url: string | null }
   }
   r.status = 'idle'
   r.url = null
+  r.port = null
   return appState(slug)
 }
 

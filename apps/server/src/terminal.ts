@@ -1,20 +1,20 @@
-import { createServer, type Server } from 'node:http'
+import type { IncomingMessage } from 'node:http'
+import type { Duplex } from 'node:stream'
 import { WebSocketServer, WebSocket } from 'ws'
 import * as pty from 'node-pty'
 import { getProjectRow } from './db.js'
 import { projectPath, slug } from './projects.js'
-import { terminalPort } from './paths.js'
 import { attachAppClient } from './apprunner.js'
 
 /**
- * Servidor de TERMINALES con sesiones PERSISTENTES en el servidor.
+ * TERMINALES con sesiones PERSISTENTES, servidas por WebSocket en el MISMO
+ * origen que el editor (ruta /ws/terminal). No abre un puerto propio: se adjunta
+ * al http.Server del editor vía handleTerminalUpgrade().
  *
  * Cada PTY se identifica por `${proyecto}::${id}` y SOBREVIVE a la desconexión
- * del WebSocket (p. ej. recargar el navegador): al reconectar con el mismo id se
- * re-engancha la misma shell y se reenvía el buffer de salida (scrollback).
- *
- * La PTY solo muere cuando: el cliente la cierra explícitamente (kill), pasa el
- * tiempo de inactividad sin ningún cliente, o se apaga el editor.
+ * (recargar el navegador): al reconectar con el mismo id se re-engancha la misma
+ * shell y se reenvía el buffer (scrollback). El id `__app__` enruta a la salida
+ * del dev server (apprunner), no a una PTY.
  */
 const SHELL = process.env.SHELL || 'bash'
 const MAX_BUFFER = 200_000 // ~200 KB de scrollback por sesión
@@ -28,10 +28,14 @@ type Session = {
 }
 const sessions = new Map<string, Session>()
 
-export function startTerminalServer(): Server {
-  const server = createServer()
-  const wss = new WebSocketServer({ server })
+const wss = new WebSocketServer({ noServer: true })
 
+/** Adjunta un upgrade de /ws/terminal al http.Server del editor. */
+export function handleTerminalUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+  wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req))
+}
+
+export function startTerminalServer(): void {
   wss.on('connection', (ws, req) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const s = slug(url.searchParams.get('project') ?? '')
@@ -117,11 +121,6 @@ export function startTerminalServer(): Server {
       }
     })
   })
-
-  server.listen(terminalPort, () => {
-    console.log(`  ⌨  Terminal WS → ws://localhost:${terminalPort}`)
-  })
-  return server
 }
 
 /** Mata todas las PTYs (al apagar el editor). */

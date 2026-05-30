@@ -53,8 +53,12 @@ dist
     'vite.config.js': `import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Dev server propio del proyecto. El puerto lo asigna el runner por CLI.
-export default defineConfig({ plugins: [react()] })
+// Dev server propio del proyecto. El runner pasa --port y --base por CLI.
+// allowedHosts permite que el editor lo sirva por proxy (mismo origen).
+export default defineConfig({
+  plugins: [react()],
+  server: { allowedHosts: true },
+})
 `,
     'index.html': `<!doctype html>
 <html lang="es">

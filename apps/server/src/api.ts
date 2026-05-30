@@ -1,7 +1,7 @@
 import { Hono, type Context } from 'hono'
 import { readFile, writeFile, readdir, rm, mkdir } from 'node:fs/promises'
 import { resolve, relative, isAbsolute, join, dirname } from 'node:path'
-import { projectsDir, terminalPort } from './paths.js'
+import { projectsDir } from './paths.js'
 import { listProjects, createProject, deleteProject, slug, projectPath } from './projects.js'
 import { getProjectRow } from './db.js'
 import { statusOf, showHead, commit, stageFile, unstageFile, discardFile } from './git.js'
@@ -49,9 +49,6 @@ function safeResolve(project: string, rel: string): string {
   }
   return abs
 }
-
-// Config del cliente (p. ej. puerto del WebSocket de terminales).
-api.get('/config', (c) => c.json({ terminalPort }))
 
 // ── Proyectos ─────────────────────────────────────────────────────────────────
 api.get('/projects', (c) => c.json({ projects: listProjects() }))

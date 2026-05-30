@@ -1,24 +1,26 @@
 import { Hono } from 'hono'
-import { getRequestListener, serve } from '@hono/node-server'
+import { getRequestListener } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
-import { createServer as createHttpServer } from 'node:http'
+import {
+  createServer as createHttpServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from 'node:http'
+import type { Duplex } from 'node:stream'
 import { readFile, mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import httpProxy from 'http-proxy'
 import { api } from './api.js'
 import { webRoot, webDist, projectsDir } from './paths.js'
-import { startTerminalServer, stopTerminals } from './terminal.js'
-import { stopAllApps } from './apprunner.js'
+import { startTerminalServer, handleTerminalUpgrade, stopTerminals } from './terminal.js'
+import { stopAllApps, appPort } from './apprunner.js'
 
 const PORT = Number(process.env.PORT ?? 3000)
 const isProd = process.env.NODE_ENV === 'production'
 
-// Asegura el directorio donde se persisten los proyectos.
 await mkdir(projectsDir, { recursive: true })
-
-// Servidor de terminales (PTY por WebSocket).
 startTerminalServer()
 
-// Al cerrar el editor, baja las apps (dev servers) y las terminales.
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, () => {
     stopAllApps()
@@ -27,77 +29,91 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   })
 }
 
-if (isProd) {
-  await startProd()
-} else {
-  await startDev()
+// Proxy del preview: /preview/<slug>/… → dev server del proyecto (127.0.0.1:port),
+// en el MISMO origen del editor (funciona tras un dominio remoto). Incluye WS de HMR.
+const proxy = httpProxy.createProxyServer({ ws: true, changeOrigin: true })
+proxy.on('error', (_e, _req, res) => {
+  const r = res as ServerResponse | undefined
+  if (r && 'writeHead' in r && !r.headersSent) {
+    r.writeHead(502, { 'content-type': 'text/plain' })
+    r.end('preview no disponible')
+  }
+})
+
+function previewTarget(url: string): string | null {
+  const m = url.match(/^\/preview\/([^/?]+)\//)
+  if (!m) return null
+  const port = appPort(decodeURIComponent(m[1]))
+  return port ? `http://127.0.0.1:${port}` : null
 }
 
-/**
- * DEV: el editor (apps/web) se sirve con Hono + Vite middleware (HMR del editor).
- * Cada proyecto corre su propio dev server (bajo demanda) y se muestra por iframe.
- */
-async function startDev() {
+const app = new Hono()
+app.route('/api', api)
+
+// En dev, las middlewares de Vite (HMR del editor por su propio ws). En prod, null.
+let viteMiddlewares:
+  | ((req: IncomingMessage, res: ServerResponse, next: () => void) => void)
+  | null = null
+
+if (isProd) {
+  app.use('/assets/*', serveStatic({ root: relativeToCwd(webDist) }))
+  app.use('/*', serveStatic({ root: relativeToCwd(webDist) }))
+  app.get('*', async (c) => c.html(await readFile(resolve(webDist, 'index.html'), 'utf8')))
+} else {
   const { createServer: createViteServer } = await import('vite')
   const { default: react } = await import('@vitejs/plugin-react')
-
-  const httpServer = createHttpServer()
-
   const vite = await createViteServer({
     root: webRoot,
-    // configFile:false evita que Vite bundlee la config a .vite-temp (lo que
-    // disparaba reinicios de tsx watch).
     configFile: false,
     plugins: [react()],
     appType: 'custom',
-    server: {
-      middlewareMode: true,
-      hmr: { server: httpServer },
-    },
+    server: { middlewareMode: true }, // HMR del editor en su propio ws (solo dev local)
   })
-
-  const app = new Hono()
-  app.route('/api', api)
-
+  viteMiddlewares = vite.middlewares
   app.get('*', async (c) => {
     try {
       const raw = await readFile(resolve(webRoot, 'index.html'), 'utf8')
-      const html = await vite.transformIndexHtml(c.req.path, raw)
-      return c.html(html)
+      return c.html(await vite.transformIndexHtml(c.req.path, raw))
     } catch (err) {
       vite.ssrFixStacktrace(err as Error)
       return c.text(String(err), 500)
     }
   })
-
-  const honoListener = getRequestListener(app.fetch)
-
-  httpServer.on('request', (req, res) => {
-    vite.middlewares(req, res, () => honoListener(req, res))
-  })
-
-  httpServer.listen(PORT, () => {
-    console.log(`\n  ⚡ live-development-app  [dev]`)
-    console.log(`  → Editor: http://localhost:${PORT}`)
-    console.log(`  Proyectos en: ${projectsDir}\n`)
-  })
 }
 
-/** PROD: el editor se sirve estático desde apps/web/dist. */
-async function startProd() {
-  const app = new Hono()
-  app.route('/api', api)
-  app.use('/assets/*', serveStatic({ root: relativeToCwd(webDist) }))
-  app.use('/*', serveStatic({ root: relativeToCwd(webDist) }))
-  app.get('*', async (c) => {
-    const html = await readFile(resolve(webDist, 'index.html'), 'utf8')
-    return c.html(html)
-  })
-  serve({ fetch: app.fetch, port: PORT }, () => {
-    console.log(`\n  ⚡ live-development-app  [prod]`)
-    console.log(`  → Editor: http://localhost:${PORT}\n`)
-  })
-}
+const honoListener = getRequestListener(app.fetch)
+
+const server = createHttpServer((req, res) => {
+  const url = req.url ?? '/'
+  const target = previewTarget(url)
+  if (target) {
+    proxy.web(req, res, { target })
+    return
+  }
+  if (viteMiddlewares) {
+    viteMiddlewares(req, res, () => honoListener(req, res))
+    return
+  }
+  honoListener(req, res)
+})
+
+server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+  const url = req.url ?? '/'
+  if (url.startsWith('/ws/terminal')) {
+    handleTerminalUpgrade(req, socket, head)
+    return
+  }
+  const target = previewTarget(url)
+  if (target) {
+    proxy.ws(req, socket, head, { target })
+    return
+  }
+  socket.destroy()
+})
+
+server.listen(PORT, () => {
+  console.log(`\n  ⚡ live-development-app  [${isProd ? 'prod' : 'dev'}]  →  :${PORT}\n`)
+})
 
 function relativeToCwd(abs: string): string {
   return resolve(abs).replace(process.cwd() + '/', './')
