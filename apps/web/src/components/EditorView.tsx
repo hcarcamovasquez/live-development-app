@@ -64,8 +64,11 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
   const [cursor, setCursor] = useState({ line: 1, col: 1 })
   const [saveFlash, setSaveFlash] = useState(false)
   const [delFile, setDelFile] = useState<string | null>(null)
-  // Panel inferior: 'app' | 'terminal' (shells) | 'ai' (OpenCode) | 'none'.
-  const [dock, setDock] = useState<'none' | 'terminal' | 'app' | 'ai'>('app')
+  // Panel inferior: 'app' | 'terminal' (shells) | 'ai' | 'none'. En modo agente
+  // arranca cerrado (vista limpia: chat + preview); las terminales se abren a demanda.
+  const [dock, setDock] = useState<'none' | 'terminal' | 'app' | 'ai'>(() =>
+    localStorage.getItem('ide.agentMode') === '1' ? 'none' : 'app',
+  )
   const toggleDock = (which: 'terminal' | 'app' | 'ai') =>
     setDock((d) => (d === which ? 'none' : which))
   const [leftView, setLeftView] = useState<'files' | 'git'>('files')
@@ -128,32 +131,50 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
     loadSize('previewW', Math.round(window.innerWidth * 0.4)),
   )
   const [termH, setTermH] = useState(() => loadSize('termH', 260))
+  // Modo agente: vista simplificada (chat IA + preview) para usuarios no técnicos.
+  const [agentMode, setAgentMode] = useState(() => localStorage.getItem('ide.agentMode') === '1')
+  const [agentChatW, setAgentChatW] = useState(() => loadSize('agentChatW', 400))
   const [dragKind, setDragKind] = useState<'col' | 'row' | null>(null)
 
   useEffect(() => saveSize('explorerW', explorerW), [explorerW])
   useEffect(() => saveSize('previewW', previewW), [previewW])
   useEffect(() => saveSize('termH', termH), [termH])
+  useEffect(() => saveSize('agentChatW', agentChatW), [agentChatW])
+  useEffect(() => localStorage.setItem('ide.agentMode', agentMode ? '1' : '0'), [agentMode])
+
+  // Al entrar en modo agente, oculta el dock inferior (queda limpio: solo chat +
+  // preview); las terminales siguen disponibles desde la barra de estado.
+  const toggleAgentMode = () =>
+    setAgentMode((v) => {
+      const next = !v
+      if (next) setDock('none')
+      return next
+    })
 
   // Inicia el arrastre de un divisor. El "shield" evita que el iframe del
   // preview capture los eventos mientras se arrastra.
-  const startDrag = (kind: 'explorer' | 'preview' | 'term') => (e: React.PointerEvent) => {
-    e.preventDefault()
-    const startX = e.clientX
-    const startY = e.clientY
-    const startExplorer = explorerW
-    const startPreview = previewW
-    const startTerm = termH
-    setDragKind(kind === 'term' ? 'row' : 'col')
+  const startDrag =
+    (kind: 'explorer' | 'preview' | 'term' | 'agentChat') => (e: React.PointerEvent) => {
+      e.preventDefault()
+      const startX = e.clientX
+      const startY = e.clientY
+      const startExplorer = explorerW
+      const startPreview = previewW
+      const startTerm = termH
+      const startAgentChat = agentChatW
+      setDragKind(kind === 'term' ? 'row' : 'col')
 
-    const onMove = (ev: PointerEvent) => {
-      if (kind === 'explorer') {
-        setExplorerW(clamp(startExplorer + (ev.clientX - startX), 160, 520))
-      } else if (kind === 'preview') {
-        setPreviewW(clamp(startPreview - (ev.clientX - startX), 260, window.innerWidth - 460))
-      } else {
-        setTermH(clamp(startTerm - (ev.clientY - startY), 120, window.innerHeight - 220))
+      const onMove = (ev: PointerEvent) => {
+        if (kind === 'explorer') {
+          setExplorerW(clamp(startExplorer + (ev.clientX - startX), 160, 520))
+        } else if (kind === 'preview') {
+          setPreviewW(clamp(startPreview - (ev.clientX - startX), 260, window.innerWidth - 460))
+        } else if (kind === 'agentChat') {
+          setAgentChatW(clamp(startAgentChat + (ev.clientX - startX), 300, 680))
+        } else {
+          setTermH(clamp(startTerm - (ev.clientY - startY), 120, window.innerHeight - 220))
+        }
       }
-    }
     const onUp = () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
@@ -328,12 +349,21 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
         <span className="ws-dim">live·dev</span>
         <span className="ws-spacer" />
         <button
-          className={`ws-toolbtn ${showPreview ? 'on' : ''}`}
-          onClick={() => setShowPreview((v) => !v)}
-          title={showPreview ? 'Ocultar preview' : 'Mostrar preview'}
+          className={`ws-agent-toggle ${agentMode ? 'on' : ''}`}
+          onClick={toggleAgentMode}
+          title="Modo agente: diseña solo chateando con la IA (oculta el editor de código)"
         >
-          <span className="ws-eye" />
+          ◎ Agente
         </button>
+        {!agentMode && (
+          <button
+            className={`ws-toolbtn ${showPreview ? 'on' : ''}`}
+            onClick={() => setShowPreview((v) => !v)}
+            title={showPreview ? 'Ocultar preview' : 'Mostrar preview'}
+          >
+            <span className="ws-eye" />
+          </button>
+        )}
         <button
           className="ws-toolbtn"
           onClick={toggleFullscreen}
@@ -343,7 +373,26 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
         </button>
       </div>
 
-      {/* Cuerpo: Project | Editor | Preview (con divisores redimensionables) */}
+      {/* Cuerpo. Modo agente: chat IA + preview. Normal: Project | Editor | Preview. */}
+      {agentMode ? (
+        <div
+          className="ws-body ws-body-agent"
+          style={{ gridTemplateColumns: `${agentChatW}px 5px minmax(0, 1fr)` }}
+        >
+          <div className="ws-agent-chat-wrap">
+            <AIChat
+              project={project}
+              onPreviewReload={() => setPreviewNonce((n) => n + 1)}
+            />
+          </div>
+          <div className="ws-split-v" onPointerDown={startDrag('agentChat')} />
+          <Preview
+            url={previewUrl}
+            nonce={previewNonce}
+            onReload={() => setPreviewNonce((n) => n + 1)}
+          />
+        </div>
+      ) : (
       <div
         className="ws-body"
         style={{
@@ -489,6 +538,7 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
           </>
         )}
       </div>
+      )}
 
       {/* Panel inferior (App / Terminal), redimensionable en alto */}
       {dock !== 'none' && (
@@ -539,14 +589,18 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
         >
           <span className={`ws-app-dot ${appStatus}`} /> App
         </button>
-        <span className="ws-status-divider" />
-        <button
-          className={`ws-tool-toggle ${dock === 'ai' ? 'on' : ''}`}
-          onClick={() => toggleDock('ai')}
-          title="AI (asistente de código)"
-        >
-          ✦ AI
-        </button>
+        {!agentMode && (
+          <>
+            <span className="ws-status-divider" />
+            <button
+              className={`ws-tool-toggle ${dock === 'ai' ? 'on' : ''}`}
+              onClick={() => toggleDock('ai')}
+              title="AI (asistente de código)"
+            >
+              ✦ AI
+            </button>
+          </>
+        )}
         {showPreview && (
           <>
             <span className="ws-status-divider" />

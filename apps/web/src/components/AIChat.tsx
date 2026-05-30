@@ -43,7 +43,7 @@ export function AIChat({
   onPreviewReload,
 }: {
   project: string
-  onClose: () => void
+  onClose?: () => void
   onPreviewReload?: () => void
 }) {
   const [draft, setDraft] = useState('')
@@ -107,7 +107,7 @@ export function AIChat({
   const submit = () => {
     const text = draft.trim()
     if (!text || isLoading) return
-    sendMessage({ role: 'user', parts: [{ type: 'text', text }] })
+    sendMessage({ id: crypto.randomUUID(), role: 'user', parts: [{ type: 'text', text }] })
     setDraft('')
   }
 
@@ -118,7 +118,7 @@ export function AIChat({
       `Crea o actualiza la sección **${s.label}** de la landing siguiendo el estilo del ` +
       `proyecto. Debe ser el archivo src/components/${s.name}.tsx con export default, ` +
       `autocontenido y usando las variables CSS del design system.`
-    sendMessage({ role: 'user', parts: [{ type: 'text', text }] })
+    sendMessage({ id: crypto.randomUUID(), role: 'user', parts: [{ type: 'text', text }] })
   }
 
   const clearChat = () => {
@@ -176,7 +176,9 @@ export function AIChat({
         {messages.length > 0 && (
           <button className="ws-icon-btn" title="Nueva conversación" onClick={clearChat}>⟳</button>
         )}
-        <button className="ws-icon-btn" title="Ocultar" onClick={onClose}>✕</button>
+        {onClose && (
+          <button className="ws-icon-btn" title="Ocultar" onClick={onClose}>✕</button>
+        )}
       </div>
 
       <div className="ws-ai-messages">
@@ -189,8 +191,8 @@ export function AIChat({
           </div>
         )}
 
-        {messages.map((m) => (
-          <div key={m.id} className={`ws-ai-msg ws-ai-${m.role}`}>
+        {messages.map((m, mi) => (
+          <div key={m.id || `m-${mi}`} className={`ws-ai-msg ws-ai-${m.role}`}>
             {m.parts.map((part, i) => {
               if (part.type === 'text') {
                 if (!part.text) return null

@@ -1095,6 +1095,13 @@
 @keyframes ws-spin { to { transform: rotate(360deg); } }
 @keyframes ws-bounce { 0%, 80%, 100% { transform: scale(0.7); opacity: 0.5; } 40% { transform: scale(1); opacity: 1; } }
 
+/* ── Modo agente (chat IA + preview, sin editor) ────────────────────────────── */
+.ws-agent-toggle { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 11px; margin-right: 8px; font-size: 11.5px; color: var(--txt-2); background: var(--editor); border: 1px solid var(--border-2); border-radius: 13px; cursor: pointer; white-space: nowrap; }
+.ws-agent-toggle:hover { border-color: var(--blue); color: var(--txt); }
+.ws-agent-toggle.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+.ws-body-agent { grid-template-rows: 100%; }
+.ws-agent-chat-wrap { min-width: 0; height: 100%; overflow: hidden; border-right: 1px solid var(--border); }
+
 /* ── AI: badge de estilo + catálogo de secciones ────────────────────────────── */
 .ws-ai-style-badge { margin-left: 10px; font-size: 11px; color: var(--txt-2); background: var(--editor); border: 1px solid var(--border-2); border-radius: 12px; padding: 2px 10px; cursor: pointer; line-height: 1.6; }
 .ws-ai-style-badge:hover { border-color: var(--blue); }
