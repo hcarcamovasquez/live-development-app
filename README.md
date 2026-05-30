@@ -38,8 +38,10 @@ API. El registro de proyectos se guarda en **SQLite** del lado del servidor.
   (con confirmación; el borrado elimina dev server + carpeta + registro).
 - **Git integrado**: cada proyecto se crea como repo (`git init` + commit inicial) y
   con `simple-git` en devDependencies. El IDE incluye un panel **Source Control**
-  (rama, lista de cambios, diff HEAD↔working con Monaco, y commit), conmutable con
-  la barra de actividad junto al explorador.
+  (conmutable con la barra de actividad): rama, **stage por archivo**, **unstage**,
+  **descartar cambios**, diff HEAD↔working con Monaco, y **commit** (del stage o de
+  todo). El servidor usa **simple-git** (wrapper del binario `git`), así que la
+  imagen Docker debe incluir `git` (`apt-get install git`).
 - **Terminal integrada** (abajo, estilo WebStorm/VS Code): **PTYs reales**
   (`node-pty`) ancladas al directorio del proyecto, vía WebSocket + **xterm.js**.
   Permite recorrer el filesystem y ejecutar comandos (`ls`, `git`, `npm`, …), con
@@ -107,9 +109,12 @@ y edita `src/UserApp.tsx`: el preview se actualiza en caliente.
 | GET    | `/api/file?project=&path=`    | Lee un archivo                           |
 | POST   | `/api/file`                   | Escribe `{ project, path, content }` (crea si no existe) |
 | DELETE | `/api/file?project=&path=`    | Borra un archivo                         |
-| GET    | `/api/git/status?project=`    | Rama + archivos cambiados                 |
+| GET    | `/api/git/status?project=`    | Rama + cambios staged / unstaged          |
 | GET    | `/api/git/diff?project=&path=`| Contenido HEAD vs working (para el diff)  |
-| POST   | `/api/git/commit`             | Commitea `{ project, message }`           |
+| POST   | `/api/git/stage`              | Stage `{ project, path }` (`.` = todo)    |
+| POST   | `/api/git/unstage`            | Quita del stage `{ project, path }`       |
+| POST   | `/api/git/discard`            | Descarta `{ project, path, untracked }`   |
+| POST   | `/api/git/commit`             | Commit `{ project, message, all? }`       |
 
 Las rutas de archivo se resuelven **dentro** del proyecto; se rechaza el path
 traversal (`../`).

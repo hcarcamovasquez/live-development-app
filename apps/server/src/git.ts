@@ -1,76 +1,92 @@
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
+import { simpleGit, type SimpleGit } from 'simple-git'
+import { rm } from 'node:fs/promises'
+import { join } from 'node:path'
 import { projectPath } from './projects.js'
 
-const exec = promisify(execFile)
-
-// Identidad usada para los commits del entorno (evita "author identity unknown").
-const IDENT = ['-c', 'user.name=live-dev', '-c', 'user.email=live-dev@local']
-
-/** Ejecuta git dentro del proyecto y devuelve stdout. */
-export async function git(slug: string, args: string[]): Promise<string> {
-  const { stdout } = await exec('git', ['-C', projectPath(slug), ...args], {
-    maxBuffer: 16 * 1024 * 1024,
-  })
-  return stdout
+/**
+ * Operaciones git del editor usando simple-git (wrapper del binario git del
+ * sistema). En Docker requiere `git` instalado en la imagen.
+ */
+function g(slug: string): SimpleGit {
+  return simpleGit({ baseDir: projectPath(slug), binary: 'git', maxConcurrentProcesses: 1 })
 }
 
-/** Inicializa el repo con un commit inicial (se llama al crear el proyecto). */
+const NAME = 'live-dev'
+const EMAIL = 'live-dev@local'
+
+/** Inicializa el repo con identidad local y un commit inicial. */
 export async function initRepo(slug: string, name: string): Promise<void> {
-  await git(slug, ['init', '-q', '-b', 'main'])
-  await git(slug, ['add', '-A'])
-  await git(slug, [...IDENT, 'commit', '-q', '-m', `init: ${name}`])
+  const git = g(slug)
+  await git.init(['-b', 'main'])
+  await git.addConfig('user.name', NAME)
+  await git.addConfig('user.email', EMAIL)
+  await git.raw(['add', '-A'])
+  await git.commit(`init: ${name}`)
 }
 
 export type GitFile = { path: string; status: 'M' | 'A' | 'D' | 'R' | 'U' }
-export type GitStatus = { branch: string; files: GitFile[]; ahead: number }
+export type GitStatus = { branch: string; staged: GitFile[]; unstaged: GitFile[] }
 
-/** Estado del repo: rama + archivos cambiados (porcelain). */
-export async function statusOf(slug: string): Promise<GitStatus> {
-  let branch = 'main'
-  try {
-    branch = (await git(slug, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim() || 'main'
-  } catch {
-    /* repo sin commits aún */
-  }
-  const out = await git(slug, ['status', '--porcelain=v1'])
-  const files: GitFile[] = out
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => {
-      const x = line[0]
-      const y = line[1]
-      const path = line.slice(3).replace(/^"|"$/g, '')
-      let status: GitFile['status'] = 'M'
-      if (line.startsWith('??')) status = 'U'
-      else if (x === 'A' || y === 'A') status = 'A'
-      else if (x === 'D' || y === 'D') status = 'D'
-      else if (x === 'R' || y === 'R') status = 'R'
-      else status = 'M'
-      return { path, status }
-    })
-  let ahead = 0
-  try {
-    ahead = (await git(slug, ['rev-list', '--count', 'HEAD'])).trim() === '' ? 0 : 0
-  } catch {
-    /* noop */
-  }
-  return { branch, files, ahead }
+function mapCode(code: string): GitFile['status'] {
+  if (code === 'A') return 'A'
+  if (code === 'D') return 'D'
+  if (code === 'R') return 'R'
+  if (code === '?') return 'U'
+  return 'M'
 }
 
-/** Contenido de un archivo en HEAD (cadena vacía si no existe allí). */
+/** Estado del repo separado en staged (index) y unstaged (working/untracked). */
+export async function statusOf(slug: string): Promise<GitStatus> {
+  const s = await g(slug).status()
+  const staged: GitFile[] = []
+  const unstaged: GitFile[] = []
+  for (const f of s.files) {
+    if (f.index && f.index !== ' ' && f.index !== '?') {
+      staged.push({ path: f.path, status: mapCode(f.index) })
+    }
+    if (f.working_dir && f.working_dir !== ' ') {
+      unstaged.push({ path: f.path, status: mapCode(f.working_dir) })
+    }
+  }
+  return { branch: s.current || 'main', staged, unstaged }
+}
+
+/** Contenido de un archivo en HEAD ('' si no existe allí). */
 export async function showHead(slug: string, path: string): Promise<string> {
   try {
-    return await git(slug, ['show', `HEAD:${path}`])
+    return await g(slug).show([`HEAD:${path}`])
   } catch {
     return ''
   }
 }
 
-/** Hace stage de todo y commitea. Devuelve el hash corto. */
-export async function commitAll(slug: string, message: string): Promise<{ hash: string }> {
-  await git(slug, ['add', '-A'])
-  await git(slug, [...IDENT, 'commit', '-m', message])
-  const hash = (await git(slug, ['rev-parse', '--short', 'HEAD'])).trim()
-  return { hash }
+/** Hace stage de un archivo. */
+export async function stageFile(slug: string, path: string): Promise<void> {
+  await g(slug).add([path])
+}
+
+/** Quita del stage un archivo (lo deja como cambio sin preparar). */
+export async function unstageFile(slug: string, path: string): Promise<void> {
+  await g(slug).raw(['reset', '-q', 'HEAD', '--', path])
+}
+
+/** Descarta los cambios de un archivo: untracked -> se borra; trazado -> HEAD. */
+export async function discardFile(slug: string, path: string, untracked: boolean): Promise<void> {
+  if (untracked) {
+    await rm(join(projectPath(slug), path), { force: true })
+  } else {
+    await g(slug).raw(['checkout', 'HEAD', '--', path]) // restaura working + index
+  }
+}
+
+/** Commit del index. Con `all`, primero hace stage de todo. */
+export async function commit(
+  slug: string,
+  message: string,
+  all: boolean,
+): Promise<{ hash: string }> {
+  const git = g(slug)
+  if (all) await git.raw(['add', '-A'])
+  const res = await git.commit(message)
+  return { hash: res.commit || (await git.revparse(['--short', 'HEAD'])).trim() }
 }

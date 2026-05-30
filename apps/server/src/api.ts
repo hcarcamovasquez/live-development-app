@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { readFile, writeFile, readdir, rm, mkdir } from 'node:fs/promises'
 import { resolve, relative, isAbsolute, join, dirname } from 'node:path'
 import { projectsDir, terminalPort } from './paths.js'
@@ -11,7 +11,7 @@ import {
   projectPath,
 } from './projects.js'
 import { getProjectRow } from './db.js'
-import { statusOf, showHead, commitAll } from './git.js'
+import { statusOf, showHead, commit, stageFile, unstageFile, discardFile } from './git.js'
 
 type TreeNode = { name: string; path: string; type: 'file' | 'dir'; children?: TreeNode[] }
 const IGNORE = new Set(['node_modules', 'dist', '.git', '.DS_Store'])
@@ -161,6 +161,22 @@ api.delete('/file', async (c) => {
 })
 
 // ── Git ───────────────────────────────────────────────────────────────────────
+// Helper para acciones git sobre un archivo: valida { project, path } y ejecuta.
+function gitFileAction(action: (slug: string, path: string) => Promise<void>) {
+  return async (c: Context) => {
+    const { project, path } = await c.req.json<{ project?: string; path?: string }>()
+    if (!project || !path) return c.json({ error: 'se requiere { project, path }' }, 400)
+    try {
+      const s = slug(project)
+      if (!getProjectRow(s)) throw new Error('Proyecto no encontrado')
+      await action(s, path)
+      return c.json({ ok: true })
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400)
+    }
+  }
+}
+
 api.get('/git/status', async (c) => {
   const project = c.req.query('project')
   if (!project) return c.json({ error: 'falta ?project' }, 400)
@@ -195,15 +211,39 @@ api.get('/git/diff', async (c) => {
 })
 
 api.post('/git/commit', async (c) => {
-  const { project, message } = await c.req.json<{ project?: string; message?: string }>()
+  const { project, message, all } = await c.req.json<{
+    project?: string
+    message?: string
+    all?: boolean
+  }>()
   if (!project || !message?.trim()) return c.json({ error: 'se requiere { project, message }' }, 400)
   try {
     const s = slug(project)
     if (!getProjectRow(s)) throw new Error('Proyecto no encontrado')
-    return c.json(await commitAll(s, message))
+    return c.json(await commit(s, message, !!all))
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    return c.json({ error: /nothing to commit/.test(msg) ? 'No hay cambios para commitear' : msg }, 400)
+    return c.json({ error: /nothing to commit/.test(msg) ? 'No hay nada en stage' : msg }, 400)
+  }
+})
+
+// Stage / unstage / descartar un archivo.
+api.post('/git/stage', gitFileAction((s, p) => stageFile(s, p)))
+api.post('/git/unstage', gitFileAction((s, p) => unstageFile(s, p)))
+api.post('/git/discard', async (c) => {
+  const { project, path, untracked } = await c.req.json<{
+    project?: string
+    path?: string
+    untracked?: boolean
+  }>()
+  if (!project || !path) return c.json({ error: 'se requiere { project, path }' }, 400)
+  try {
+    const s = slug(project)
+    if (!getProjectRow(s)) throw new Error('Proyecto no encontrado')
+    await discardFile(s, path, !!untracked)
+    return c.json({ ok: true })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 400)
   }
 })
 

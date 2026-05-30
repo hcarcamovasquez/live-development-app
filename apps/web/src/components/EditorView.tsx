@@ -68,6 +68,18 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
       .catch(() => {})
   }
 
+  // Tras descartar cambios, refresca el buffer del archivo si está abierto.
+  const reloadFile = (path: string) => {
+    fetch(`/api/file${q}&path=${encodeURIComponent(path)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (typeof d.content === 'string') {
+          setFiles((f) => (f[path] ? { ...f, [path]: { content: d.content, dirty: false } } : f))
+        }
+      })
+      .catch(() => {})
+  }
+
   // Tamaños de paneles (redimensionables, persistidos en localStorage).
   const [explorerW, setExplorerW] = useState(() => loadSize('explorerW', 250))
   const [previewW, setPreviewW] = useState(() =>
@@ -301,7 +313,12 @@ export function EditorView({ project, onBack }: { project: string; onBack: () =>
             onDeleteFile={setDelFile}
           />
         ) : (
-          <GitPanel project={project} activePath={diff?.path ?? ''} onOpenDiff={openDiff} />
+          <GitPanel
+            project={project}
+            activePath={diff?.path ?? ''}
+            onOpenDiff={openDiff}
+            onReloadFile={reloadFile}
+          />
         )}
 
         <div className="ws-split-v" onPointerDown={startDrag('explorer')} />
